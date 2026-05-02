@@ -94,6 +94,12 @@ const matchesAdjustment = (item: any, pattern: RegExp) => {
   return pattern.test(text) && Number(item?.price) < 0;
 };
 
+const getAdjustmentTotal = (items: any[], pattern: RegExp) => {
+  return items
+    .filter(item => matchesAdjustment(item, pattern))
+    .reduce((sum, item) => sum + getAdjustmentAmount(item), 0);
+};
+
 const isQuotaError = (message: string) => {
   return /429|quota|exhausted|resource_exhausted|rate limit/i.test(message);
 };
@@ -372,12 +378,15 @@ export function ReceiptDetail() {
   // Auto-calculate total from items if any exist
   useEffect(() => {
     if (items.length > 0 || pendingAiItems.length > 0) {
+      const allItems = [...items, ...pendingAiItems];
       const savedTotal = items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
       const pendingTotal = pendingAiItems.reduce((sum, item) => sum + ((item.price || 0) * (item.quantity || 1)), 0);
+      const itemDiscountTotal = getAdjustmentTotal(allItems, DISCOUNT_ITEM_PATTERN);
+      const itemTaxRefundTotal = getAdjustmentTotal(allItems, TAX_REFUND_ITEM_PATTERN);
       
       setReceipt(prev => {
-        const discount = prev.totalDiscount || 0;
-        const taxRefund = prev.totalTaxRefund || 0;
+        const discount = Math.max(0, (prev.totalDiscount || 0) - itemDiscountTotal);
+        const taxRefund = Math.max(0, (prev.totalTaxRefund || 0) - itemTaxRefundTotal);
         const newTotalAmount = savedTotal + pendingTotal - discount - taxRefund;
         if (prev.totalAmount === newTotalAmount) return prev;
         return { 

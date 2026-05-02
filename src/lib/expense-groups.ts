@@ -32,8 +32,11 @@ const legacyGroupMap: Record<string, string> = {
 };
 
 export interface SplitItem {
+  name?: string;
+  translatedName?: string;
   price?: number | string;
   quantity?: number | string;
+  source?: string;
   tag?: string;
 }
 
@@ -61,6 +64,20 @@ const toAmount = (value: unknown) => {
 };
 
 const roundMoney = (amount: number) => Math.round(amount * 100) / 100;
+
+const DISCOUNT_ITEM_PATTERN = /値引|割引|クーポン|coupon|discount|折扣|優惠/i;
+const TAX_REFUND_ITEM_PATTERN = /tax\s*free|tax\s*refund|免税|免稅|退税|退稅/i;
+
+const matchesAdjustment = (item: SplitItem, pattern: RegExp) => {
+  const text = `${item.name || ''} ${item.translatedName || ''} ${item.source || ''}`;
+  return pattern.test(text) && toAmount(item.price) < 0;
+};
+
+const getAdjustmentTotal = (items: SplitItem[], pattern: RegExp) => {
+  return items
+    .filter(item => matchesAdjustment(item, pattern))
+    .reduce((sum, item) => sum + Math.abs(toAmount(item.price) * (Math.abs(toAmount(item.quantity)) || 1)), 0);
+};
 
 export const normalizeGroupName = (value?: string, fallback = label('\u672a\u5206\u985e')) => {
   const trimmed = (value || '').trim();
@@ -104,8 +121,10 @@ export function buildSplitSummary(receipt: SplitReceipt, items: SplitItem[] = []
   });
 
   const totalBase = Array.from(rows.values()).reduce((sum, row) => sum + row.allocationBase, 0);
-  const totalDiscount = Math.max(0, toAmount(receipt.totalDiscount));
-  const totalTaxRefund = Math.max(0, toAmount(receipt.totalTaxRefund));
+  const itemDiscountTotal = getAdjustmentTotal(items, DISCOUNT_ITEM_PATTERN);
+  const itemTaxRefundTotal = getAdjustmentTotal(items, TAX_REFUND_ITEM_PATTERN);
+  const totalDiscount = Math.max(0, toAmount(receipt.totalDiscount) - itemDiscountTotal);
+  const totalTaxRefund = Math.max(0, toAmount(receipt.totalTaxRefund) - itemTaxRefundTotal);
 
   const summary = Array.from(rows.values()).map((row) => {
     const ratio = totalBase > 0 ? row.allocationBase / totalBase : 0;
