@@ -88,20 +88,22 @@ const buildPrompt = () => `
 1. totalAmount 必須是實際付款金額，優先讀「合計」「クレジット支払」「現金」「お預り」「領収金額」等實付欄位。
 2. 不可以把「小計（税抜）」「商品代金」「税率対象」「消費税等」當成 totalAmount。
 3. 如果收據有 7-11 常見欄位：商品代金 4,178、値引額 -12、小計（税抜 8%）4,166、消費税等 333、合計 4,499，totalAmount 必須是 4499，不是 4156、4166 或 4178。
+4. 折扣與退稅要填入收據層級欄位；若收據上有獨立列，也可以保留在 items 方便使用者核對。
 
 明細規則：
 1. items[].price 是單價，quantity 是數量；如果收據寫「@118 x 4 *472」，price=118，quantity=4。
 2. 如果只有一個金額，quantity=1。
-3. 折扣列例如「値引額 -12」要當成一筆負數 item：name="値引額"，translatedName="折扣金額"，price=-12，quantity=1，且 totalDiscount=0。
-4. 如果有消費稅列，因為 schema 沒有 tax 欄位，請加入一筆稅金 item：name 使用收據稅金文字，translatedName="消費稅"，price=稅額，quantity=1。
-5. totalTaxRefund 只用於 Tax Free 或免稅退稅金額；一般日本 8% 或 10% 消費稅不算退稅。
+3. 折扣列例如「値引額 -12」「割引」「クーポン」「優惠」「折扣」請把絕對值加總到 totalDiscount；例如「値引額 -12」輸出 totalDiscount=12。若也放入 items，price 請保留負數。
+4. 退稅列例如「Tax Free」「免税」「免稅」「退税」「退稅」請把絕對值加總到 totalTaxRefund。若也放入 items，price 請保留負數。
+5. 如果有一般消費稅列，因為 schema 沒有 tax 欄位，請加入一筆稅金 item：name 使用收據稅金文字，translatedName="消費稅"，price=稅額，quantity=1。
+6. totalTaxRefund 只用於 Tax Free 或免稅退稅金額；一般日本 8% 或 10% 消費稅不算退稅。
 
 日期規則：
 1. date 輸出 YYYY-MM-DDTHH:mm。
 2. 例如 2025年07月28日 22:14，輸出 "2025-07-28T22:14"。
 
 檢查規則：
-1. 優先讓 sum(items[].price * items[].quantity) 與 totalAmount 相符。
+1. 優先讓 sum(items[].price * items[].quantity) - totalDiscount - totalTaxRefund 與 totalAmount 相符。
 2. 若收據有合計與刷卡支付金額，以實付合計為準，不要為了省略稅金而讓總額錯誤。
 3. 所有數字只輸出 number，不要包含 ¥、JPY、逗號或空白。
 `;

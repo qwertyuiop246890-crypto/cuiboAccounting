@@ -80,6 +80,20 @@ const getModelFallbackOrder = (preferredModel: string) => {
   return [preferredModel, ...models.filter(model => model !== preferredModel)];
 };
 
+const DISCOUNT_ITEM_PATTERN = /値引|割引|クーポン|coupon|discount|折扣|優惠/i;
+const TAX_REFUND_ITEM_PATTERN = /tax\s*free|tax\s*refund|免税|免稅|退税|退稅/i;
+
+const getAdjustmentAmount = (item: any) => {
+  const price = Number(item?.price) || 0;
+  const quantity = Math.abs(Number(item?.quantity) || 1);
+  return Math.abs(price * quantity);
+};
+
+const matchesAdjustment = (item: any, pattern: RegExp) => {
+  const text = `${item?.name || ''} ${item?.translatedName || ''} ${item?.source || ''}`;
+  return pattern.test(text) && Number(item?.price) < 0;
+};
+
 const isQuotaError = (message: string) => {
   return /429|quota|exhausted|resource_exhausted|rate limit/i.test(message);
 };
@@ -664,6 +678,14 @@ export function ReceiptDetail() {
       setUploadProgress(90);
       setUploadStatus('Applying OCR result...');
 
+      const rawItems = Array.isArray(result.items) ? result.items : [];
+      const discountItems = rawItems.filter((item: any) => matchesAdjustment(item, DISCOUNT_ITEM_PATTERN));
+      const taxRefundItems = rawItems.filter((item: any) => matchesAdjustment(item, TAX_REFUND_ITEM_PATTERN));
+      const detectedDiscount = discountItems.reduce((sum: number, item: any) => sum + getAdjustmentAmount(item), 0);
+      const detectedTaxRefund = taxRefundItems.reduce((sum: number, item: any) => sum + getAdjustmentAmount(item), 0);
+      const totalDiscount = Math.abs(Number(result.totalDiscount) || 0) || detectedDiscount;
+      const totalTaxRefund = Math.abs(Number(result.totalTaxRefund) || 0) || detectedTaxRefund;
+
       const newReceiptData = {
         ...receipt,
         photoUrl: compressedDataUrls[0],
@@ -671,14 +693,14 @@ export function ReceiptDetail() {
         storeName: result.storeName || receipt.storeName,
         totalAmount: result.totalAmount || receipt.totalAmount,
         date: result.date ? normalizeDate(result.date).slice(0, 16) : receipt.date,
-        totalDiscount: result.totalDiscount || 0,
-        totalTaxRefund: result.totalTaxRefund || 0
+        totalDiscount,
+        totalTaxRefund
       };
 
       setReceipt(newReceiptData);
 
-      if (result.items && result.items.length > 0) {
-        const newItems = result.items.map((item: any) => ({
+      if (rawItems.length > 0) {
+        const newItems = rawItems.map((item: any) => ({
           name: item.name || 'Unknown Item',
           translatedName: item.translatedName || '',
           price: Number(item.price) || 0,
