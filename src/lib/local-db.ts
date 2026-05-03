@@ -2,6 +2,7 @@ import { openDB, IDBPDatabase } from 'idb';
 
 const DB_NAME = 'cuibo-accounting-local';
 const DB_VERSION = 2;
+const LOCAL_CHANGE_KEY = 'cuibo_last_local_change_at';
 
 let dbPromise: Promise<IDBPDatabase<any>> | null = null;
 const listeners = new Map<string, Set<Function>>();
@@ -44,6 +45,14 @@ const getDB = async () => {
 const notify = (collectionName: string) => {
   if (listeners.has(collectionName)) {
     listeners.get(collectionName)?.forEach(fn => fn());
+  }
+};
+
+const markLocalChange = () => {
+  try {
+    localStorage.setItem(LOCAL_CHANGE_KEY, new Date().toISOString());
+  } catch (error) {
+    // Storage can be unavailable in restricted browser contexts.
   }
 };
 
@@ -94,6 +103,7 @@ export const setDoc = async (docRef: any, data: any) => {
     const db = await getDB();
     const parentPath = docRef.path.split('/').slice(0, -1).join('/');
     await db.put(docRef.collectionName, { id: docRef.id, _collectionPath: parentPath, ...data });
+    markLocalChange();
     notify(docRef.collectionName);
   } catch (err: any) {
     if (err.message?.includes('connection is closing')) {
@@ -120,6 +130,7 @@ export const updateDoc = async (docRef: any, data: any) => {
         const parentPath = docRef.path.split('/').slice(0, -1).join('/');
         merged._collectionPath = parentPath;
         await db.put(docRef.collectionName, merged);
+        markLocalChange();
         notify(docRef.collectionName);
     }
   } catch (err: any) {
@@ -135,6 +146,7 @@ export const deleteDoc = async (docRef: any) => {
   try {
     const db = await getDB();
     await db.delete(docRef.collectionName, docRef.id);
+    markLocalChange();
     notify(docRef.collectionName);
   } catch (err: any) {
     if (err.message?.includes('connection is closing')) {

@@ -4,16 +4,36 @@ import { collection, doc, setDoc, deleteDoc, updateDoc, getDocs, onSnapshot, db,
 import { handleDatabaseError, OperationType } from '../lib/db-errors';
 import { Plus, Trash2, CreditCard, ArrowUp, ArrowDown, Edit2, Check, X as CloseIcon, Download, Upload } from 'lucide-react';
 import toast from 'react-hot-toast';
+import {
+  buildBackupPayload,
+  downloadDriveBackup,
+  getBackupTotalCount,
+  getLastCloudBackupAt,
+  getLastLocalChangeAt,
+  importBackupPayload,
+  listDriveBackups,
+  markCloudBackupAt,
+  requestDriveAccessToken,
+  uploadDriveBackup,
+  type BackupPayload
+} from '../lib/drive-backup';
 
 const T = {
   settings: '\u8a2d\u5b9a',
   backup: '\u8cc7\u6599\u5099\u4efd',
-  backupHelp: '\u532f\u51fa\u672c\u6a5f IndexedDB \u8cc7\u6599\u6210 JSON\uff0c\u53ef\u7528\u4f86\u8de8\u88dd\u7f6e\u5099\u4efd\u6216\u5fa9\u539f\u3002',
-  exportJson: '\u532f\u51fa JSON',
-  importJson: '\u532f\u5165\u5099\u4efd',
+  backupHelp: '\u5099\u4efd\u5230 Google Drive \u7684 App \u5c08\u7528\u96b1\u85cf\u8cc7\u6599\u593e\uff0c\u6bcf\u6b21\u4e0a\u50b3\u90fd\u4fdd\u7559\u4e00\u4efd\u65b0\u7248\u672c\u3002',
+  uploadCloud: '\u4e0a\u50b3\u5099\u4efd',
+  downloadCloud: '\u4e0b\u8f09\u5099\u4efd',
+  exportJson: '\u624b\u52d5\u532f\u51fa',
+  importJson: '\u624b\u52d5\u532f\u5165',
   importDone: '\u532f\u5165\u5b8c\u6210\uff0c\u9801\u9762\u5c07\u91cd\u65b0\u8f09\u5165\u3002',
   importFailed: '\u532f\u5165\u5931\u6557',
   exportFailed: '\u532f\u51fa\u5931\u6557',
+  cloudMissingClient: '\u5c1a\u672a\u8a2d\u5b9a Google OAuth Client ID\u3002\u8acb\u5728 Vercel \u52a0\u5165 VITE_GOOGLE_CLIENT_ID\u3002',
+  cloudUploadDone: '\u5df2\u4e0a\u50b3\u5230 Google Drive',
+  cloudDownloadDone: '\u5df2\u5f9e Google Drive \u532f\u5165\u5099\u4efd',
+  cloudFailed: 'Google Drive \u5099\u4efd\u5931\u6557',
+  noCloudBackup: '\u627e\u4e0d\u5230 Google Drive \u5099\u4efd',
   accounts: '\u5e33\u6236\u7ba1\u7406',
   accountName: '\u5e33\u6236\u540d\u7a31',
   accountNamePlaceholder: '\u4f8b\uff1aJCB \u4fe1\u7528\u5361\u3001\u65e5\u5e63\u73fe\u91d1',
@@ -44,6 +64,8 @@ export function Settings() {
   const [newAccountBalance, setNewAccountBalance] = useState('');
   const [editingAccountId, setEditingAccountId] = useState<string | null>(null);
   const [editAccountData, setEditAccountData] = useState({ name: '', type: '', currency: '', balance: '' });
+  const [backupBusy, setBackupBusy] = useState(false);
+  const googleClientId = (import.meta.env.VITE_GOOGLE_CLIENT_ID as string) || '';
 
   useEffect(() => {
     if (!auth.currentUser) return;
@@ -59,38 +81,16 @@ export function Settings() {
   const existingTypes = Array.from(new Set([...accounts.map(a => a.type).filter(Boolean), T.cashJpy, T.creditCard, T.icCard, T.bank]));
   const existingCurrencies = Array.from(new Set([...accounts.map(a => a.currency).filter(Boolean), 'JPY', 'TWD', 'USD', 'KRW']));
 
+  const buildCurrentBackup = async (): Promise<BackupPayload | null> => {
+    if (!auth.currentUser) return;
+    return buildBackupPayload(auth.currentUser.uid);
+  };
+
   const handleExportData = async () => {
     if (!auth.currentUser) return;
-    const uid = auth.currentUser.uid;
-
     try {
-      const data: any = {
-        paymentAccounts: [],
-        receipts: {},
-        taxRefunds: [],
-        transfers: [],
-        exportedAt: new Date().toISOString(),
-        version: '3.0-local'
-      };
-
-      const accountsSnap = await getDocs(collection(db, `users/${uid}/paymentAccounts`));
-      data.paymentAccounts = accountsSnap.docs.map((d: any) => ({ id: d.id, ...d.data() }));
-
-      const refundsSnap = await getDocs(collection(db, `users/${uid}/taxRefunds`));
-      data.taxRefunds = refundsSnap.docs.map((d: any) => ({ id: d.id, ...d.data() }));
-
-      const transfersSnap = await getDocs(collection(db, `users/${uid}/transfers`));
-      data.transfers = transfersSnap.docs.map((d: any) => ({ id: d.id, ...d.data() }));
-
-      const receiptsSnap = await getDocs(collection(db, `users/${uid}/receipts`));
-      for (const receiptDoc of receiptsSnap.docs) {
-        const itemsSnap = await getDocs(collection(db, `users/${uid}/receipts/${receiptDoc.id}/items`));
-        data.receipts[receiptDoc.id] = {
-          data: receiptDoc.data(),
-          items: itemsSnap.docs.map((d: any) => ({ id: d.id, ...d.data() }))
-        };
-      }
-
+      const data = await buildCurrentBackup();
+      if (!data) return;
       const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -101,6 +101,80 @@ export function Settings() {
     } catch (error) {
       console.error('Local data export failed', error);
       toast.error(T.exportFailed);
+    }
+  };
+
+  const handleCloudUpload = async () => {
+    if (!auth.currentUser || backupBusy) return;
+    if (!googleClientId) {
+      toast.error(T.cloudMissingClient);
+      return;
+    }
+
+    setBackupBusy(true);
+    try {
+      const accessToken = await requestDriveAccessToken(googleClientId);
+      const currentBackup = await buildBackupPayload(auth.currentUser.uid);
+      const localCount = getBackupTotalCount(currentBackup.counts);
+      const cloudFiles = await listDriveBackups(accessToken);
+
+      if (localCount === 0 && cloudFiles.length > 0) {
+        const latestCloud = await downloadDriveBackup(accessToken, cloudFiles[0].id);
+        if (getBackupTotalCount(latestCloud.counts) > 0) {
+          toast.error('\u672c\u6a5f\u662f\u7a7a\u767d\u8cc7\u6599\uff0c\u5df2\u963b\u64cb\u8986\u84cb Google Drive \u5099\u4efd\u3002');
+          return;
+        }
+      }
+
+      await uploadDriveBackup(accessToken, currentBackup);
+      markCloudBackupAt(currentBackup.exportedAt);
+      toast.success(T.cloudUploadDone);
+    } catch (error) {
+      console.error('Google Drive upload failed', error);
+      toast.error(T.cloudFailed);
+    } finally {
+      setBackupBusy(false);
+    }
+  };
+
+  const handleCloudDownload = async () => {
+    if (!auth.currentUser || backupBusy) return;
+    if (!googleClientId) {
+      toast.error(T.cloudMissingClient);
+      return;
+    }
+
+    const lastLocalChange = getLastLocalChangeAt();
+    const lastCloudBackup = getLastCloudBackupAt();
+    if (lastLocalChange && (!lastCloudBackup || lastLocalChange > lastCloudBackup)) {
+      const ok = window.confirm('\u672c\u6a5f\u6709\u5c1a\u672a\u4e0a\u50b3\u7684\u8b8a\u66f4\u3002\u76f4\u63a5\u4e0b\u8f09\u6703\u532f\u5165\u96f2\u7aef\u5099\u4efd\uff0c\u5efa\u8b70\u5148\u4e0a\u50b3\u3002\u4ecd\u8981\u7e7c\u7e8c\u55ce\uff1f');
+      if (!ok) return;
+    }
+
+    setBackupBusy(true);
+    try {
+      const accessToken = await requestDriveAccessToken(googleClientId);
+      const cloudFiles = await listDriveBackups(accessToken);
+      if (cloudFiles.length === 0) {
+        toast.error(T.noCloudBackup);
+        return;
+      }
+
+      const latestBackup = await downloadDriveBackup(accessToken, cloudFiles[0].id);
+      if (getBackupTotalCount(latestBackup.counts) === 0) {
+        const ok = window.confirm('\u6700\u65b0 Google Drive \u5099\u4efd\u662f\u7a7a\u767d\u8cc7\u6599\u3002\u4ecd\u8981\u532f\u5165\u55ce\uff1f');
+        if (!ok) return;
+      }
+
+      await importBackupPayload(auth.currentUser.uid, latestBackup);
+      markCloudBackupAt(latestBackup.exportedAt);
+      toast.success(T.cloudDownloadDone);
+      window.location.reload();
+    } catch (error) {
+      console.error('Google Drive download failed', error);
+      toast.error(T.cloudFailed);
+    } finally {
+      setBackupBusy(false);
     }
   };
 
@@ -251,6 +325,15 @@ export function Settings() {
           {T.backup}
         </h2>
         <p className="px-2 text-[12px] font-medium text-ink/60 leading-relaxed mb-4">{T.backupHelp}</p>
+        <div className="grid grid-cols-2 gap-4 mb-4">
+          <button onClick={handleCloudUpload} disabled={backupBusy} className="bg-primary-blue text-white p-4 rounded-2xl font-bold flex items-center justify-center gap-2 hover:opacity-90 transition-all border border-primary-blue disabled:opacity-50">
+            <Upload className="w-4 h-4" /> {T.uploadCloud}
+          </button>
+          <button onClick={handleCloudDownload} disabled={backupBusy} className="bg-ink text-white p-4 rounded-2xl font-bold flex items-center justify-center gap-2 hover:opacity-90 transition-all border border-ink disabled:opacity-50">
+            <Download className="w-4 h-4" /> {T.downloadCloud}
+          </button>
+        </div>
+        {!googleClientId && <p className="px-2 text-[11px] font-bold text-red-400 leading-relaxed mb-4">{T.cloudMissingClient}</p>}
         <div className="flex gap-4">
           <button onClick={handleExportData} className="flex-1 bg-background text-ink p-4 rounded-2xl font-bold flex items-center justify-center gap-2 hover:bg-divider transition-all border border-divider">
             <Download className="w-4 h-4" /> {T.exportJson}
