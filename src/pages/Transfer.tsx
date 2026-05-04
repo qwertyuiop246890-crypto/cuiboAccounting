@@ -1,10 +1,11 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useMemo } from 'react';
 import type { FormEvent, ReactNode } from 'react';
-import { collection, doc, setDoc, updateDoc, increment, onSnapshot, db, auth } from '../lib/local-db';
+import { collection, doc, setDoc, db, auth } from '../lib/local-db';
 import { handleDatabaseError, OperationType } from '../lib/db-errors';
 import { ArrowRightLeft, ArrowDown, ArrowUp, Save } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
+import { useDerivedAccounts } from '../hooks/useDerivedAccounts';
 
 const T = {
   title: '\u63db\u532f\u7d00\u9304',
@@ -25,7 +26,7 @@ const T = {
 };
 
 export function Transfer() {
-  const [accounts, setAccounts] = useState<any[]>([]);
+  const accounts = useDerivedAccounts();
   const [sourceAmount, setSourceAmount] = useState('');
   const [targetAmount, setTargetAmount] = useState('');
   const [fromAccount, setFromAccount] = useState('');
@@ -33,19 +34,6 @@ export function Transfer() {
   const [notes, setNotes] = useState('');
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
-
-  useEffect(() => {
-    if (!auth.currentUser) return;
-
-    const q = collection(db, `users/${auth.currentUser.uid}/paymentAccounts`);
-    const unsubscribe = onSnapshot(q, (snapshot: any) => {
-      const accountsData = snapshot.docs.map((accountDoc: any) => ({ id: accountDoc.id, ...accountDoc.data() }));
-      const sortedAccounts = accountsData.sort((a: any, b: any) => (a.order ?? 0) - (b.order ?? 0));
-      setAccounts(sortedAccounts);
-    });
-
-    return () => unsubscribe();
-  }, []);
 
   const fromAcc = accounts.find(a => a.id === fromAccount);
   const toAcc = accounts.find(a => a.id === toAccount);
@@ -82,15 +70,6 @@ export function Transfer() {
         toAccountId: toAccount,
         notes,
         createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
-      });
-
-      await updateDoc(doc(db, `users/${auth.currentUser.uid}/paymentAccounts/${fromAccount}`), {
-        balance: increment(-paid),
-        updatedAt: new Date().toISOString()
-      });
-      await updateDoc(doc(db, `users/${auth.currentUser.uid}/paymentAccounts/${toAccount}`), {
-        balance: increment(received),
         updatedAt: new Date().toISOString()
       });
 

@@ -1,12 +1,13 @@
 import { useState, useEffect, useRef } from 'react';
 import type { ChangeEvent, FormEvent, ReactNode } from 'react';
-import { collection, doc, setDoc, updateDoc, increment, getDoc, onSnapshot, db, auth } from '../lib/local-db';
+import { collection, doc, setDoc, updateDoc, getDoc, db, auth } from '../lib/local-db';
 import { handleDatabaseError, OperationType } from '../lib/db-errors';
 import { ArrowLeft, Landmark, Save, Camera, Image as ImageIcon } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { format } from 'date-fns';
 import toast from 'react-hot-toast';
 import { normalizeDate } from '../lib/utils';
+import { useDerivedAccounts } from '../hooks/useDerivedAccounts';
 
 const T = {
   newTitle: '\u9000\u7a05\u5165\u5e33',
@@ -58,31 +59,20 @@ const compressImage = (file: File): Promise<string> => {
 export function TaxRefund() {
   const { id } = useParams();
   const isEdit = !!id;
-  const [accounts, setAccounts] = useState<any[]>([]);
+  const accounts = useDerivedAccounts();
   const [amount, setAmount] = useState('');
   const [targetAccount, setTargetAccount] = useState('');
   const [notes, setNotes] = useState('');
   const [date, setDate] = useState(format(new Date(), "yyyy-MM-dd'T'HH:mm"));
   const [loading, setLoading] = useState(false);
   const [photoUrls, setPhotoUrls] = useState<string[]>([]);
-  const [originalAmount, setOriginalAmount] = useState(0);
-  const [originalAccount, setOriginalAccount] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const galleryInputRef = useRef<HTMLInputElement>(null);
   const navigate = useNavigate();
 
   useEffect(() => {
-    if (!auth.currentUser) return;
-
-    const unsubscribe = onSnapshot(collection(db, `users/${auth.currentUser.uid}/paymentAccounts`), (snapshot: any) => {
-      const accountData = snapshot.docs.map((accountDoc: any) => ({ id: accountDoc.id, ...accountDoc.data() }));
-      const sorted = accountData.sort((a: any, b: any) => (a.order ?? 0) - (b.order ?? 0));
-      setAccounts(sorted);
-      if (!isEdit && !targetAccount && sorted.length > 0) setTargetAccount(sorted[0].id);
-    });
-
-    return () => unsubscribe();
-  }, [isEdit, targetAccount]);
+    if (!isEdit && !targetAccount && accounts.length > 0) setTargetAccount(accounts[0].id);
+  }, [accounts, isEdit, targetAccount]);
 
   useEffect(() => {
     if (!auth.currentUser || !isEdit || !id) return;
@@ -93,9 +83,7 @@ export function TaxRefund() {
         if (!snap.exists()) return;
         const data = snap.data();
         setAmount(data.amount?.toString() || '');
-        setOriginalAmount(data.amount || 0);
         setTargetAccount(data.paymentAccountId || '');
-        setOriginalAccount(data.paymentAccountId || '');
         setNotes(data.notes || '');
         setDate(data.date ? normalizeDate(data.date).substring(0, 16) : format(new Date(), "yyyy-MM-dd'T'HH:mm"));
         setPhotoUrls(data.photoUrls || (data.photoUrl ? [data.photoUrl] : []));
@@ -153,16 +141,8 @@ export function TaxRefund() {
 
       if (isEdit) {
         await updateDoc(refundRef, payload);
-        if (originalAccount === targetAccount) {
-          const diff = refundAmount - originalAmount;
-          if (diff !== 0) await updateDoc(doc(db, `users/${auth.currentUser.uid}/paymentAccounts/${targetAccount}`), { balance: increment(diff) });
-        } else {
-          if (originalAccount) await updateDoc(doc(db, `users/${auth.currentUser.uid}/paymentAccounts/${originalAccount}`), { balance: increment(-originalAmount) });
-          await updateDoc(doc(db, `users/${auth.currentUser.uid}/paymentAccounts/${targetAccount}`), { balance: increment(refundAmount) });
-        }
       } else {
         await setDoc(refundRef, payload);
-        await updateDoc(doc(db, `users/${auth.currentUser.uid}/paymentAccounts/${targetAccount}`), { balance: increment(refundAmount) });
       }
 
       toast.success(T.saved);

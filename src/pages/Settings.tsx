@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import type { ChangeEvent, FormEvent } from 'react';
-import { collection, doc, setDoc, deleteDoc, updateDoc, getDocs, onSnapshot, db, auth } from '../lib/local-db';
+import { collection, doc, setDoc, deleteDoc, updateDoc, getDocs, db, auth } from '../lib/local-db';
 import { handleDatabaseError, OperationType } from '../lib/db-errors';
 import { Plus, Trash2, CreditCard, ArrowUp, ArrowDown, Edit2, Check, X as CloseIcon, Download, Upload } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -17,6 +17,13 @@ import {
   uploadDriveBackup,
   type BackupPayload
 } from '../lib/drive-backup';
+import {
+  clearStoredDriveAccessToken,
+  getGoogleProjectLabel,
+  getStoredDriveAccessToken,
+  revokeDriveAccess
+} from '../lib/drive-backup';
+import { useDerivedAccounts } from '../hooks/useDerivedAccounts';
 
 const T = {
   settings: '\u8a2d\u5b9a',
@@ -24,6 +31,11 @@ const T = {
   backupHelp: '\u5099\u4efd\u5230 Google Drive \u7684 App \u5c08\u7528\u96b1\u85cf\u8cc7\u6599\u593e\uff0c\u6bcf\u6b21\u4e0a\u50b3\u90fd\u4fdd\u7559\u4e00\u4efd\u65b0\u7248\u672c\u3002',
   uploadCloud: '\u4e0a\u50b3\u5099\u4efd',
   downloadCloud: '\u4e0b\u8f09\u5099\u4efd',
+  loginDrive: '\u767b\u5165 Google Drive',
+  logoutDrive: '\u767b\u51fa Google Drive',
+  driveProject: '\u7d81\u5b9a\u5c08\u6848',
+  connected: '\u5df2\u9023\u7dda',
+  disconnected: '\u672a\u9023\u7dda',
   exportJson: '\u624b\u52d5\u532f\u51fa',
   importJson: '\u624b\u52d5\u532f\u5165',
   importDone: '\u532f\u5165\u5b8c\u6210\uff0c\u9801\u9762\u5c07\u91cd\u65b0\u8f09\u5165\u3002',
@@ -34,6 +46,17 @@ const T = {
   cloudDownloadDone: '\u5df2\u5f9e Google Drive \u532f\u5165\u5099\u4efd',
   cloudFailed: 'Google Drive \u5099\u4efd\u5931\u6557',
   noCloudBackup: '\u627e\u4e0d\u5230 Google Drive \u5099\u4efd',
+  backupPreview: '\u5099\u4efd\u5dee\u7570\u9810\u89bd',
+  localData: '\u672c\u6a5f\u8cc7\u6599',
+  cloudData: '\u96f2\u7aef\u5099\u4efd',
+  confirmImport: '\u78ba\u8a8d\u532f\u5165',
+  closePreview: '\u53d6\u6d88',
+  receipts: '\u6536\u64da',
+  items: '\u54c1\u9805',
+  refunds: '\u9000\u7a05',
+  transfersLabel: '\u63db\u532f',
+  backupTime: '\u5099\u4efd\u6642\u9593',
+  localChangeTime: '\u672c\u6a5f\u6700\u5f8c\u8b8a\u66f4',
   accounts: '\u5e33\u6236\u7ba1\u7406',
   accountName: '\u5e33\u6236\u540d\u7a31',
   accountNamePlaceholder: '\u4f8b\uff1aJCB \u4fe1\u7528\u5361\u3001\u65e5\u5e63\u73fe\u91d1',
@@ -56,8 +79,22 @@ const T = {
   bank: '\u9280\u884c\u5e33\u6236'
 };
 
+const formatDateTime = (value?: string) => {
+  if (!value) return '-';
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleString('zh-TW');
+};
+
+const countRows = (data: BackupPayload) => [
+  {label: T.accounts, value: data.counts.paymentAccounts},
+  {label: T.receipts, value: data.counts.receipts},
+  {label: T.items, value: data.counts.items},
+  {label: T.refunds, value: data.counts.taxRefunds},
+  {label: T.transfersLabel, value: data.counts.transfers}
+];
+
 export function Settings() {
-  const [accounts, setAccounts] = useState<any[]>([]);
+  const accounts = useDerivedAccounts();
   const [newAccountName, setNewAccountName] = useState('');
   const [newAccountType, setNewAccountType] = useState(T.cashJpy);
   const [newAccountCurrency, setNewAccountCurrency] = useState('JPY');
@@ -65,18 +102,10 @@ export function Settings() {
   const [editingAccountId, setEditingAccountId] = useState<string | null>(null);
   const [editAccountData, setEditAccountData] = useState({ name: '', type: '', currency: '', balance: '' });
   const [backupBusy, setBackupBusy] = useState(false);
+  const [backupPreview, setBackupPreview] = useState<{local: BackupPayload; cloud: BackupPayload; fileName: string} | null>(null);
+  const [driveConnected, setDriveConnected] = useState(() => !!getStoredDriveAccessToken());
   const googleClientId = (import.meta.env.VITE_GOOGLE_CLIENT_ID as string) || '';
-
-  useEffect(() => {
-    if (!auth.currentUser) return;
-
-    const unsubscribe = onSnapshot(collection(db, `users/${auth.currentUser.uid}/paymentAccounts`), (snapshot: any) => {
-      const accountsData = snapshot.docs.map((accountDoc: any) => ({ id: accountDoc.id, ...accountDoc.data() }));
-      setAccounts(accountsData.sort((a: any, b: any) => (a.order ?? 0) - (b.order ?? 0)));
-    });
-
-    return () => unsubscribe();
-  }, []);
+  const googleProject = getGoogleProjectLabel(googleClientId);
 
   const existingTypes = Array.from(new Set([...accounts.map(a => a.type).filter(Boolean), T.cashJpy, T.creditCard, T.icCard, T.bank]));
   const existingCurrencies = Array.from(new Set([...accounts.map(a => a.currency).filter(Boolean), 'JPY', 'TWD', 'USD', 'KRW']));
@@ -114,6 +143,7 @@ export function Settings() {
     setBackupBusy(true);
     try {
       const accessToken = await requestDriveAccessToken(googleClientId);
+      setDriveConnected(true);
       const currentBackup = await buildBackupPayload(auth.currentUser.uid);
       const localCount = getBackupTotalCount(currentBackup.counts);
       const cloudFiles = await listDriveBackups(accessToken);
@@ -154,6 +184,7 @@ export function Settings() {
     setBackupBusy(true);
     try {
       const accessToken = await requestDriveAccessToken(googleClientId);
+      setDriveConnected(true);
       const cloudFiles = await listDriveBackups(accessToken);
       if (cloudFiles.length === 0) {
         toast.error(T.noCloudBackup);
@@ -166,15 +197,63 @@ export function Settings() {
         if (!ok) return;
       }
 
-      await importBackupPayload(auth.currentUser.uid, latestBackup);
-      markCloudBackupAt(latestBackup.exportedAt);
-      toast.success(T.cloudDownloadDone);
-      window.location.reload();
+      const localBackup = await buildBackupPayload(auth.currentUser.uid);
+      setBackupPreview({
+        local: localBackup,
+        cloud: latestBackup,
+        fileName: cloudFiles[0].name
+      });
     } catch (error) {
       console.error('Google Drive download failed', error);
       toast.error(T.cloudFailed);
     } finally {
       setBackupBusy(false);
+    }
+  };
+
+  const handleConfirmCloudImport = async () => {
+    if (!auth.currentUser || !backupPreview || backupBusy) return;
+
+    setBackupBusy(true);
+    try {
+      await importBackupPayload(auth.currentUser.uid, backupPreview.cloud);
+      markCloudBackupAt(backupPreview.cloud.exportedAt);
+      toast.success(T.cloudDownloadDone);
+      window.location.reload();
+    } catch (error) {
+      console.error('Google Drive import failed', error);
+      toast.error(T.importFailed);
+    } finally {
+      setBackupBusy(false);
+    }
+  };
+
+  const handleDriveLogin = async () => {
+    if (!googleClientId) {
+      toast.error(T.cloudMissingClient);
+      return;
+    }
+
+    try {
+      await requestDriveAccessToken(googleClientId, 'consent');
+      setDriveConnected(true);
+      toast.success(T.connected);
+    } catch (error) {
+      console.error('Google Drive login failed', error);
+      toast.error(T.cloudFailed);
+    }
+  };
+
+  const handleDriveLogout = async () => {
+    try {
+      await revokeDriveAccess();
+      clearStoredDriveAccessToken();
+      setDriveConnected(false);
+      toast.success(T.disconnected);
+    } catch (error) {
+      console.error('Google Drive logout failed', error);
+      clearStoredDriveAccessToken();
+      setDriveConnected(false);
     }
   };
 
@@ -244,6 +323,8 @@ export function Settings() {
         name: newAccountName.trim(),
         type: newAccountType.trim() || T.cashJpy,
         balance: Number(newAccountBalance),
+        openingBalance: Number(newAccountBalance),
+        balanceMode: 'derived',
         currency: newAccountCurrency.trim() || 'JPY',
         order: maxOrder + 1,
         createdAt: new Date().toISOString(),
@@ -276,6 +357,8 @@ export function Settings() {
         type: editAccountData.type,
         currency: editAccountData.currency,
         balance: Number(editAccountData.balance),
+        openingBalance: Number(editAccountData.balance),
+        balanceMode: 'derived',
         updatedAt: new Date().toISOString()
       });
       setEditingAccountId(null);
@@ -325,6 +408,23 @@ export function Settings() {
           {T.backup}
         </h2>
         <p className="px-2 text-[12px] font-medium text-ink/60 leading-relaxed mb-4">{T.backupHelp}</p>
+        <div className="mb-4 rounded-2xl border border-divider bg-background p-4">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-[10px] font-bold text-ink/40 uppercase tracking-widest">{T.driveProject}</p>
+              <p className="mt-1 break-all text-xs font-bold text-ink">{googleProject.display || '-'}</p>
+              <p className={`mt-2 text-[10px] font-black ${driveConnected ? 'text-green-600' : 'text-red-400'}`}>
+                {driveConnected ? T.connected : T.disconnected}
+              </p>
+            </div>
+            <button
+              onClick={driveConnected ? handleDriveLogout : handleDriveLogin}
+              className="shrink-0 rounded-xl bg-white px-3 py-2 text-[10px] font-black text-ink border border-divider"
+            >
+              {driveConnected ? T.logoutDrive : T.loginDrive}
+            </button>
+          </div>
+        </div>
         <div className="grid grid-cols-2 gap-4 mb-4">
           <button onClick={handleCloudUpload} disabled={backupBusy} className="bg-primary-blue text-white p-4 rounded-2xl font-bold flex items-center justify-center gap-2 hover:opacity-90 transition-all border border-primary-blue disabled:opacity-50">
             <Upload className="w-4 h-4" /> {T.uploadCloud}
@@ -334,6 +434,24 @@ export function Settings() {
           </button>
         </div>
         {!googleClientId && <p className="px-2 text-[11px] font-bold text-red-400 leading-relaxed mb-4">{T.cloudMissingClient}</p>}
+        {backupPreview && (
+          <div className="mb-4 rounded-3xl border border-primary-blue/20 bg-primary-blue/5 p-4">
+            <div className="flex items-start justify-between gap-3 mb-4">
+              <div>
+                <p className="text-sm font-black text-ink">{T.backupPreview}</p>
+                <p className="text-[10px] font-bold text-ink/40 mt-1 break-all">{backupPreview.fileName}</p>
+              </div>
+              <button onClick={() => setBackupPreview(null)} className="text-[10px] font-bold text-ink/40 hover:text-ink">{T.closePreview}</button>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <BackupCountPanel title={T.localData} timeLabel={T.localChangeTime} time={getLastLocalChangeAt()} data={backupPreview.local} />
+              <BackupCountPanel title={T.cloudData} timeLabel={T.backupTime} time={backupPreview.cloud.exportedAt} data={backupPreview.cloud} />
+            </div>
+            <button onClick={handleConfirmCloudImport} disabled={backupBusy} className="mt-4 w-full bg-ink text-white p-3 rounded-2xl font-bold disabled:opacity-50">
+              {T.confirmImport}
+            </button>
+          </div>
+        )}
         <div className="flex gap-4">
           <button onClick={handleExportData} className="flex-1 bg-background text-ink p-4 rounded-2xl font-bold flex items-center justify-center gap-2 hover:bg-divider transition-all border border-divider">
             <Download className="w-4 h-4" /> {T.exportJson}
@@ -417,6 +535,34 @@ export function Settings() {
           {accounts.length === 0 && <div className="text-center py-8 text-ink/30 text-sm font-medium">{T.noAccounts}</div>}
         </div>
       </section>
+    </div>
+  );
+}
+
+function BackupCountPanel({
+  title,
+  timeLabel,
+  time,
+  data
+}: {
+  title: string;
+  timeLabel: string;
+  time?: string;
+  data: BackupPayload;
+}) {
+  return (
+    <div className="rounded-2xl bg-white/80 p-3 border border-divider">
+      <p className="text-xs font-black text-ink">{title}</p>
+      <p className="text-[9px] font-bold text-ink/35 mt-1">{timeLabel}</p>
+      <p className="text-[10px] font-bold text-primary-blue mb-3">{formatDateTime(time)}</p>
+      <div className="space-y-1">
+        {countRows(data).map(row => (
+          <div key={row.label} className="flex justify-between text-[10px] font-bold text-ink/60">
+            <span>{row.label}</span>
+            <span>{row.value}</span>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

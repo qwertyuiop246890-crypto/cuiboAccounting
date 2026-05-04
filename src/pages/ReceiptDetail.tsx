@@ -1,6 +1,6 @@
 ﻿import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { doc, getDoc, setDoc, collection, query, deleteDoc, updateDoc, increment, orderBy, getDocs, onSnapshot, db, auth } from '../lib/local-db';
+import { doc, getDoc, setDoc, collection, deleteDoc, updateDoc, getDocs, onSnapshot, db, auth } from '../lib/local-db';
 import { handleDatabaseError, OperationType, getFriendlyErrorMessage } from '../lib/db-errors';
 import { Camera, Save, Plus, Trash2, ArrowLeft, Image as ImageIcon, Sparkles, X, ClipboardPaste } from 'lucide-react';
 import { format } from 'date-fns';
@@ -9,6 +9,7 @@ import { Autocomplete } from '../components/ui/Autocomplete';
 import { motion, AnimatePresence } from 'motion/react';
 import toast from 'react-hot-toast';
 import { OWNER_OPTIONS, DEFAULT_GROUP_OPTIONS, buildSplitSummary, formatCurrencyAmount, normalizeGroupName } from '../lib/expense-groups';
+import { useDerivedAccounts } from '../hooks/useDerivedAccounts';
 
 const T = {
   newReceipt: '\u65b0\u589e\u6536\u64da',
@@ -53,7 +54,12 @@ const T = {
   noItems: '\u5c1a\u672a\u6709\u54c1\u9805',
   apiMode: '\u5f8c\u7aef API \u8fa8\u8b58\u4e2d...',
   apiTestSuccess: '\u5f8c\u7aef API \u8fa8\u8b58\u5b8c\u6210',
-  apiTestFailed: '\u5f8c\u7aef API \u8fa8\u8b58\u5931\u6557'
+  apiTestFailed: '\u5f8c\u7aef API \u8fa8\u8b58\u5931\u6557',
+  reconcileTitle: '\u5c0d\u5e33\u8b66\u544a',
+  reconcileHelp: '\u660e\u7d30\u3001\u6298\u6263\u3001\u9000\u7a05\u548c\u5be6\u4ed8\u7e3d\u984d\u5c0d\u4e0d\u8d77\u4f86\uff0c\u8acb\u6838\u5c0d OCR \u7d50\u679c\u3002',
+  itemTotal: '\u660e\u7d30\u5408\u8a08',
+  calculatedTotal: '\u63a8\u7b97\u5be6\u4ed8',
+  difference: '\u5dee\u984d'
 };
 
 const SUBCATEGORY_OPTIONS = [
@@ -100,6 +106,8 @@ const getAdjustmentTotal = (items: any[], pattern: RegExp) => {
     .reduce((sum, item) => sum + getAdjustmentAmount(item), 0);
 };
 
+const roundMoney = (amount: number) => Math.round(amount * 100) / 100;
+
 const isQuotaError = (message: string) => {
   return /429|quota|exhausted|resource_exhausted|rate limit/i.test(message);
 };
@@ -117,8 +125,8 @@ const compressImage = (file: File): Promise<string> => {
       img.src = event.target?.result as string;
       img.onload = () => {
         const canvas = document.createElement('canvas');
-        const MAX_WIDTH = 1000;
-        const MAX_HEIGHT = 1000;
+        const MAX_WIDTH = 1800;
+        const MAX_HEIGHT = 2400;
         let width = img.width;
         let height = img.height;
 
@@ -137,8 +145,7 @@ const compressImage = (file: File): Promise<string> => {
         canvas.height = height;
         const ctx = canvas.getContext('2d');
         ctx?.drawImage(img, 0, 0, width, height);
-        // Reset quality slightly lower to improve processing speed
-        resolve(canvas.toDataURL('image/jpeg', 0.6));
+        resolve(canvas.toDataURL('image/jpeg', 0.88));
       };
       img.onerror = (error) => reject(error);
     };
@@ -183,7 +190,7 @@ export function ReceiptDetail() {
   const navigate = useNavigate();
   const isNew = id === 'new';
 
-  const [accounts, setAccounts] = useState<any[]>([]);
+  const accounts = useDerivedAccounts();
   const [items, setItems] = useState<any[]>([]);
   const [pendingAiItems, setPendingAiItems] = useState<any[]>([]);
   
@@ -204,8 +211,6 @@ export function ReceiptDetail() {
   const [editItemData, setEditItemData] = useState({ name: '', translatedName: '', price: '', quantity: '', tag: '' });
   const [newItem, setNewItem] = useState({ name: '', translatedName: '', price: '', quantity: '1', notes: '', tag: '' });
   const [showFullImage, setShowFullImage] = useState(false);
-  const [originalTotalAmount, setOriginalTotalAmount] = useState(0);
-  const [originalAccountId, setOriginalAccountId] = useState('');
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -233,23 +238,6 @@ export function ReceiptDetail() {
     message: '',
     type: 'info'
   });
-
-  useEffect(() => {
-    if (!auth.currentUser) return;
-
-    const fetchAccounts = async () => {
-      try {
-        const snap = await getDocs(collection(db, `users/${auth.currentUser!.uid}/paymentAccounts`));
-        const accountsData = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-        const sortedAccounts = accountsData.sort((a: any, b: any) => (a.order ?? 0) - (b.order ?? 0));
-        setAccounts(sortedAccounts);
-      } catch (error) {
-        handleDatabaseError(error, OperationType.GET, `users/${auth.currentUser?.uid}/paymentAccounts`);
-      }
-    };
-
-    fetchAccounts();
-  }, []);
 
   useEffect(() => {
     if (isNew || !auth.currentUser || !id) return;
@@ -283,8 +271,6 @@ export function ReceiptDetail() {
             totalDiscount: data.totalDiscount || 0,
             totalTaxRefund: data.totalTaxRefund || 0
           });
-          setOriginalTotalAmount(data.totalAmount);
-          setOriginalAccountId(data.paymentAccountId);
         }
 
         const qItems = collection(db, `users/${auth.currentUser!.uid}/receipts/${id}/items`);
@@ -400,6 +386,28 @@ export function ReceiptDetail() {
   const currencySymbol = receipt.currency || 'JPY';
   const allReceiptItems = useMemo(() => [...items, ...pendingAiItems], [items, pendingAiItems]);
   const splitSummary = useMemo(() => buildSplitSummary(receipt, allReceiptItems), [receipt, allReceiptItems]);
+  const reconciliation = useMemo(() => {
+    const itemTotal = allReceiptItems.reduce((sum, item) => {
+      return sum + ((Number(item.price) || 0) * (Number(item.quantity) || 1));
+    }, 0);
+    const itemDiscountTotal = getAdjustmentTotal(allReceiptItems, DISCOUNT_ITEM_PATTERN);
+    const itemTaxRefundTotal = getAdjustmentTotal(allReceiptItems, TAX_REFUND_ITEM_PATTERN);
+    const extraDiscount = Math.max(0, (Number(receipt.totalDiscount) || 0) - itemDiscountTotal);
+    const extraTaxRefund = Math.max(0, (Number(receipt.totalTaxRefund) || 0) - itemTaxRefundTotal);
+    const calculatedTotal = roundMoney(itemTotal - extraDiscount - extraTaxRefund);
+    const paidTotal = roundMoney(Number(receipt.totalAmount) || 0);
+    const difference = roundMoney(paidTotal - calculatedTotal);
+
+    return {
+      itemTotal: roundMoney(itemTotal),
+      extraDiscount,
+      extraTaxRefund,
+      calculatedTotal,
+      paidTotal,
+      difference,
+      hasWarning: allReceiptItems.length > 0 && Math.abs(difference) >= 1
+    };
+  }, [allReceiptItems, receipt.totalAmount, receipt.totalDiscount, receipt.totalTaxRefund]);
   const normalizedReceiptCategory = normalizeGroupName(receipt.category, '\u5ba2\u4eba');
   const displaySubCategory = receipt.subCategory && !receipt.subCategory.includes('?') ? receipt.subCategory : SUBCATEGORY_OPTIONS[0];
 
@@ -447,44 +455,6 @@ export function ReceiptDetail() {
           }
         }
         setPendingAiItems([]);
-      }
-
-      // Update account balance
-      if (isNew) {
-        const accountRef = doc(db, `users/${auth.currentUser.uid}/paymentAccounts/${receipt.paymentAccountId}`);
-        try {
-          await updateDoc(accountRef, { balance: increment(-Number(receipt.totalAmount)) });
-        } catch (error) {
-          handleDatabaseError(error, OperationType.UPDATE, `users/${auth.currentUser.uid}/paymentAccounts/${receipt.paymentAccountId}`);
-        }
-      } else {
-        // Handle changes in existing receipt
-        const diff = Number(receipt.totalAmount) - originalTotalAmount;
-        
-        if (receipt.paymentAccountId === originalAccountId) {
-          // Same account, just update the difference
-          if (diff !== 0) {
-            const accountRef = doc(db, `users/${auth.currentUser.uid}/paymentAccounts/${receipt.paymentAccountId}`);
-            try {
-              await updateDoc(accountRef, { balance: increment(-diff) });
-            } catch (error) {
-              handleDatabaseError(error, OperationType.UPDATE, `users/${auth.currentUser.uid}/paymentAccounts/${receipt.paymentAccountId}`);
-            }
-          }
-        } else {
-          // Account changed: restore old, deduct from new
-          const oldAccountRef = doc(db, `users/${auth.currentUser.uid}/paymentAccounts/${originalAccountId}`);
-          const newAccountRef = doc(db, `users/${auth.currentUser.uid}/paymentAccounts/${receipt.paymentAccountId}`);
-          
-          try {
-            await updateDoc(oldAccountRef, { balance: increment(originalTotalAmount) });
-            await updateDoc(newAccountRef, { balance: increment(-Number(receipt.totalAmount)) });
-          } catch (error) {
-            handleDatabaseError(error, OperationType.UPDATE, `users/${auth.currentUser.uid}/paymentAccounts`);
-          }
-        }
-        setOriginalTotalAmount(Number(receipt.totalAmount));
-        setOriginalAccountId(receipt.paymentAccountId);
       }
 
       toast.success(isNew ? '\u6536\u64da\u5df2\u5132\u5b58' : '\u6536\u64da\u5df2\u66f4\u65b0');
@@ -678,11 +648,11 @@ export function ReceiptDetail() {
 
       const result = payload.result || payload.data || payload.receipt || payload;
       if (result.date) result.date = normalizeDate(result.date);
-      return { result, compressedDataUrls };
+      return { result, compressedDataUrls, ocrMeta: payload };
     };
 
     try {
-      const { result, compressedDataUrls } = await performBackendOCR();
+      const { result, compressedDataUrls, ocrMeta } = await performBackendOCR();
       
       setUploadProgress(90);
       setUploadStatus('Applying OCR result...');
@@ -703,7 +673,11 @@ export function ReceiptDetail() {
         totalAmount: result.totalAmount || receipt.totalAmount,
         date: result.date ? normalizeDate(result.date).slice(0, 16) : receipt.date,
         totalDiscount,
-        totalTaxRefund
+        totalTaxRefund,
+        ocrRawResult: result,
+        ocrModel: ocrMeta?.model || DEFAULT_OCR_MODEL,
+        ocrKeyIndex: ocrMeta?.keyIndex || null,
+        ocrProcessedAt: new Date().toISOString()
       };
 
       setReceipt(newReceiptData);
@@ -954,6 +928,32 @@ export function ReceiptDetail() {
             <div className="grid grid-cols-3 gap-4"><div className="col-span-1"><label className="block text-[10px] font-bold text-ink/40 mb-1.5 uppercase tracking-widest">{T.currency}</label><select value={receipt.currency || 'JPY'} onChange={e => setReceipt({ ...receipt, currency: e.target.value })} className="w-full p-4 bg-background border border-divider rounded-2xl focus:ring-2 focus:ring-primary-blue outline-none font-bold text-ink appearance-none"><option value="JPY">JPY</option><option value="TWD">TWD</option><option value="KRW">KRW</option><option value="USD">USD</option></select></div><div className="col-span-2"><label className="block text-[10px] font-bold text-ink/40 mb-1.5 uppercase tracking-widest">{T.totalPaid}</label><input type="number" value={receipt.totalAmount} onChange={e => setReceipt({ ...receipt, totalAmount: Number(e.target.value) })} disabled={items.length > 0 || pendingAiItems.length > 0} className="w-full p-4 bg-background border border-divider rounded-2xl focus:ring-2 focus:ring-primary-blue outline-none disabled:opacity-50 font-serif font-bold text-ink text-lg" /></div></div>
             <div className="grid grid-cols-2 gap-4"><div><label className="block text-[10px] font-bold text-ink/40 mb-1.5 uppercase tracking-widest">{T.discount}</label><input type="number" value={receipt.totalDiscount || ''} onChange={e => setReceipt({ ...receipt, totalDiscount: Number(e.target.value) })} className="w-full p-4 bg-background border border-divider rounded-2xl focus:ring-2 focus:ring-primary-blue outline-none font-serif font-bold text-green-600 text-sm" placeholder="0" /></div><div><label className="block text-[10px] font-bold text-ink/40 mb-1.5 uppercase tracking-widest">{T.taxRefund}</label><input type="number" value={receipt.totalTaxRefund || ''} onChange={e => setReceipt({ ...receipt, totalTaxRefund: Number(e.target.value) })} className="w-full p-4 bg-background border border-divider rounded-2xl focus:ring-2 focus:ring-primary-blue outline-none font-serif font-bold text-blue-600 text-sm" placeholder="0" /></div></div>
           </div>
+
+          {reconciliation.hasWarning && (
+            <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-red-700">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-sm font-black">{T.reconcileTitle}</p>
+                  <p className="text-[11px] font-bold leading-relaxed mt-1 text-red-500">{T.reconcileHelp}</p>
+                </div>
+                <span className="shrink-0 rounded-xl bg-white px-3 py-1 text-xs font-black">
+                  {formatCurrencyAmount(currencySymbol, reconciliation.difference)}
+                </span>
+              </div>
+              <div className="mt-3 grid grid-cols-2 gap-2 text-[11px] font-bold">
+                <span>{T.itemTotal}</span>
+                <span className="text-right">{formatCurrencyAmount(currencySymbol, reconciliation.itemTotal)}</span>
+                <span>{T.discount}</span>
+                <span className="text-right">-{formatCurrencyAmount(currencySymbol, reconciliation.extraDiscount)}</span>
+                <span>{T.taxRefund}</span>
+                <span className="text-right">-{formatCurrencyAmount(currencySymbol, reconciliation.extraTaxRefund)}</span>
+                <span>{T.calculatedTotal}</span>
+                <span className="text-right">{formatCurrencyAmount(currencySymbol, reconciliation.calculatedTotal)}</span>
+                <span>{T.totalPaid}</span>
+                <span className="text-right">{formatCurrencyAmount(currencySymbol, reconciliation.paidTotal)}</span>
+              </div>
+            </div>
+          )}
 
           <div><label className="block text-[10px] font-bold text-ink/40 mb-1.5 uppercase tracking-widest">{T.paymentAccount} <span className="text-red-400">*</span></label><select value={receipt.paymentAccountId} onChange={e => setReceipt({ ...receipt, paymentAccountId: e.target.value })} className="w-full p-4 bg-background border border-divider rounded-2xl focus:ring-2 focus:ring-primary-blue outline-none font-bold text-ink appearance-none"><option value="">{T.selectAccount}</option>{accounts.map(a => <option key={a.id} value={a.id}>{a.name} ({a.currency} {a.balance.toLocaleString()})</option>)}</select></div>
 

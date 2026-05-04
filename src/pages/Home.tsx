@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import type { MouseEvent } from 'react';
-import { collection, onSnapshot, doc, getDoc, deleteDoc, updateDoc, increment, getDocs, db, auth } from '../lib/local-db';
+import { collection, onSnapshot, doc, deleteDoc, getDocs, db, auth } from '../lib/local-db';
 import { format } from 'date-fns';
 import { Camera, Receipt as ReceiptIcon, CreditCard, Trash2, Landmark, X, ArrowRightLeft } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
@@ -160,29 +160,10 @@ export function Home() {
         const uid = auth.currentUser!.uid;
         try {
           if (record._type === 'taxRefund') {
-            if (record.paymentAccountId) {
-              await updateDoc(doc(db, `users/${uid}/paymentAccounts/${record.paymentAccountId}`), { balance: increment(-(record.amount || 0)) });
-            }
             await deleteDoc(doc(db, `users/${uid}/taxRefunds/${record.id}`));
           } else if (record._type === 'transfer') {
-            const sourceAmount = record.sourceAmount ?? record.amount ?? 0;
-            const targetAmount = record.targetAmount ?? record.amount ?? 0;
-            if (record.fromAccountId) {
-              await updateDoc(doc(db, `users/${uid}/paymentAccounts/${record.fromAccountId}`), { balance: increment(sourceAmount) });
-            }
-            if (record.toAccountId) {
-              await updateDoc(doc(db, `users/${uid}/paymentAccounts/${record.toAccountId}`), { balance: increment(-targetAmount) });
-            }
             await deleteDoc(doc(db, `users/${uid}/transfers/${record.id}`));
           } else {
-            if (record.paymentAccountId) {
-              const accountRef = doc(db, `users/${uid}/paymentAccounts/${record.paymentAccountId}`);
-              const accountSnap = await getDoc(accountRef).catch(() => null);
-              if (accountSnap?.exists()) {
-                await updateDoc(accountRef, { balance: increment(record.totalAmount || 0) });
-              }
-            }
-
             const itemsRef = collection(db, `users/${uid}/receipts/${record.id}/items`);
             const itemsSnap = await getDocs(itemsRef).catch(() => ({ docs: [] }));
             for (const itemDoc of itemsSnap.docs) {

@@ -4,6 +4,7 @@ const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.appdata';
 const BACKUP_PREFIX = 'cuibo-drive-backup-';
 const LOCAL_CHANGE_KEY = 'cuibo_last_local_change_at';
 const CLOUD_BACKUP_KEY = 'cuibo_last_cloud_backup_at';
+const DRIVE_TOKEN_KEY = 'cuibo_google_drive_access_token';
 
 declare global {
   interface Window {
@@ -15,6 +16,7 @@ declare global {
             scope: string;
             callback: (response: {access_token?: string; error?: string}) => void;
           }) => {requestAccessToken: (options?: {prompt?: string}) => void};
+          revoke?: (token: string, callback?: () => void) => void;
         };
       };
     };
@@ -63,6 +65,17 @@ export const getLastLocalChangeAt = () => localStorage.getItem(LOCAL_CHANGE_KEY)
 export const getLastCloudBackupAt = () => localStorage.getItem(CLOUD_BACKUP_KEY) || '';
 export const markCloudBackupAt = (value = new Date().toISOString()) => {
   localStorage.setItem(CLOUD_BACKUP_KEY, value);
+};
+export const getStoredDriveAccessToken = () => localStorage.getItem(DRIVE_TOKEN_KEY) || '';
+export const clearStoredDriveAccessToken = () => localStorage.removeItem(DRIVE_TOKEN_KEY);
+
+export const getGoogleProjectLabel = (clientId: string) => {
+  const projectNumber = clientId.split('-')[0] || '';
+  return {
+    clientId,
+    projectNumber,
+    display: projectNumber ? `${projectNumber} (${clientId})` : clientId
+  };
 };
 
 export const getBackupTotalCount = (counts: BackupCounts) => {
@@ -142,7 +155,7 @@ export const importBackupPayload = async (uid: string, data: BackupPayload) => {
   }
 };
 
-export const requestDriveAccessToken = (clientId: string) => {
+export const requestDriveAccessToken = (clientId: string, prompt = '') => {
   return new Promise<string>((resolve, reject) => {
     const tokenClient = window.google?.accounts?.oauth2?.initTokenClient({
       client_id: clientId,
@@ -152,6 +165,7 @@ export const requestDriveAccessToken = (clientId: string) => {
           reject(new Error(response.error || 'Google Drive authorization failed.'));
           return;
         }
+        localStorage.setItem(DRIVE_TOKEN_KEY, response.access_token);
         resolve(response.access_token);
       }
     });
@@ -161,7 +175,21 @@ export const requestDriveAccessToken = (clientId: string) => {
       return;
     }
 
-    tokenClient.requestAccessToken({prompt: ''});
+    tokenClient.requestAccessToken({prompt});
+  });
+};
+
+export const revokeDriveAccess = async () => {
+  const token = getStoredDriveAccessToken();
+  clearStoredDriveAccessToken();
+  if (!token) return;
+
+  await new Promise<void>((resolve) => {
+    if (!window.google?.accounts?.oauth2?.revoke) {
+      resolve();
+      return;
+    }
+    window.google.accounts.oauth2.revoke(token, () => resolve());
   });
 };
 
