@@ -104,8 +104,17 @@ export function Settings() {
   const [backupBusy, setBackupBusy] = useState(false);
   const [backupPreview, setBackupPreview] = useState<{local: BackupPayload; cloud: BackupPayload; fileName: string} | null>(null);
   const [driveConnected, setDriveConnected] = useState(() => !!getStoredDriveAccessToken());
+  const [driveError, setDriveError] = useState('');
   const googleClientId = (import.meta.env.VITE_GOOGLE_CLIENT_ID as string) || '';
   const googleProject = getGoogleProjectLabel(googleClientId);
+
+  const getDrivePrompt = () => getStoredDriveAccessToken() ? '' : 'consent';
+
+  const showDriveError = (error: unknown) => {
+    const message = error instanceof Error ? error.message : String(error);
+    setDriveError(message);
+    toast.error(message || T.cloudFailed);
+  };
 
   const existingTypes = Array.from(new Set([...accounts.map(a => a.type).filter(Boolean), T.cashJpy, T.creditCard, T.icCard, T.bank]));
   const existingCurrencies = Array.from(new Set([...accounts.map(a => a.currency).filter(Boolean), 'JPY', 'TWD', 'USD', 'KRW']));
@@ -141,8 +150,9 @@ export function Settings() {
     }
 
     setBackupBusy(true);
+    setDriveError('');
     try {
-      const accessToken = await requestDriveAccessToken(googleClientId);
+      const accessToken = await requestDriveAccessToken(googleClientId, getDrivePrompt());
       setDriveConnected(true);
       const currentBackup = await buildBackupPayload(auth.currentUser.uid);
       const localCount = getBackupTotalCount(currentBackup.counts);
@@ -161,7 +171,7 @@ export function Settings() {
       toast.success(T.cloudUploadDone);
     } catch (error) {
       console.error('Google Drive upload failed', error);
-      toast.error(T.cloudFailed);
+      showDriveError(error);
     } finally {
       setBackupBusy(false);
     }
@@ -182,8 +192,9 @@ export function Settings() {
     }
 
     setBackupBusy(true);
+    setDriveError('');
     try {
-      const accessToken = await requestDriveAccessToken(googleClientId);
+      const accessToken = await requestDriveAccessToken(googleClientId, getDrivePrompt());
       setDriveConnected(true);
       const cloudFiles = await listDriveBackups(accessToken);
       if (cloudFiles.length === 0) {
@@ -205,7 +216,7 @@ export function Settings() {
       });
     } catch (error) {
       console.error('Google Drive download failed', error);
-      toast.error(T.cloudFailed);
+      showDriveError(error);
     } finally {
       setBackupBusy(false);
     }
@@ -237,10 +248,11 @@ export function Settings() {
     try {
       await requestDriveAccessToken(googleClientId, 'consent');
       setDriveConnected(true);
+      setDriveError('');
       toast.success(T.connected);
     } catch (error) {
       console.error('Google Drive login failed', error);
-      toast.error(T.cloudFailed);
+      showDriveError(error);
     }
   };
 
@@ -434,6 +446,11 @@ export function Settings() {
           </button>
         </div>
         {!googleClientId && <p className="px-2 text-[11px] font-bold text-red-400 leading-relaxed mb-4">{T.cloudMissingClient}</p>}
+        {driveError && (
+          <div className="mb-4 rounded-2xl border border-red-200 bg-red-50 p-3 text-[11px] font-bold leading-relaxed text-red-600 break-words">
+            {driveError}
+          </div>
+        )}
         {backupPreview && (
           <div className="mb-4 rounded-3xl border border-primary-blue/20 bg-primary-blue/5 p-4">
             <div className="flex items-start justify-between gap-3 mb-4">
