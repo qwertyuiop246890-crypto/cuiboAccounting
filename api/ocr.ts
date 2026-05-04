@@ -81,8 +81,10 @@ const buildPrompt = () => `
 
 辨識目標：
 1. 讀取店家名稱、日期時間、實付總額、折扣、退稅、每一筆商品明細。
-2. 商品名稱保持收據原文，translatedName 使用繁體中文補充用途或商品意思。
-3. 不要自行推測客人歸屬，所有品項先不填 owner，前端會讓使用者補。
+2. storeName 請保留收據上的店家原文；translatedStoreName 請輸出繁體中文店家名稱或常見中文譯名。例如「セブン-イレブン」輸出 translatedStoreName="7-Eleven" 或「七十一便利商店」。
+3. 商品 name 請保持收據原文，translatedName 請使用繁體中文商品名稱或用途，不要放羅馬拼音。
+4. 如果店家或商品本來就是中文，原文與中文欄位可以相同；如果看不清楚，寧可留空也不要亂猜。
+5. 不要自行推測客人歸屬，所有品項先不填 owner，前端會讓使用者補。
 
 金額規則：
 1. totalAmount 必須是實際付款金額，優先讀「合計」「クレジット支払」「現金」「お預り」「領収金額」等實付欄位。
@@ -114,6 +116,7 @@ const responseSchema = {
   type: Type.OBJECT,
   properties: {
     storeName: {type: Type.STRING},
+    translatedStoreName: {type: Type.STRING},
     date: {
       type: Type.STRING,
       description: 'Standardized date string: YYYY-MM-DDTHH:mm'

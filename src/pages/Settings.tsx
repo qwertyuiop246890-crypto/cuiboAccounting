@@ -28,11 +28,11 @@ import { useDerivedAccounts } from '../hooks/useDerivedAccounts';
 const T = {
   settings: '\u8a2d\u5b9a',
   backup: '\u8cc7\u6599\u5099\u4efd',
-  backupHelp: '\u5099\u4efd\u5230 Google Drive \u7684 App \u5c08\u7528\u96b1\u85cf\u8cc7\u6599\u593e\uff0c\u6bcf\u6b21\u4e0a\u50b3\u90fd\u4fdd\u7559\u4e00\u4efd\u65b0\u7248\u672c\u3002',
+  backupHelp: '\u5099\u4efd\u5230 Google \u96f2\u7aef\u786c\u789f\u7684 App \u5c08\u7528\u96b1\u85cf\u8cc7\u6599\u593e\uff0c\u6bcf\u6b21\u4e0a\u50b3\u90fd\u4fdd\u7559\u4e00\u4efd\u65b0\u7248\u672c\u3002',
   uploadCloud: '\u4e0a\u50b3\u5099\u4efd',
   downloadCloud: '\u4e0b\u8f09\u5099\u4efd',
-  loginDrive: '\u767b\u5165 Google Drive',
-  logoutDrive: '\u767b\u51fa Google Drive',
+  loginDrive: '\u767b\u5165 Google \u96f2\u7aef\u786c\u789f',
+  logoutDrive: '\u767b\u51fa Google \u96f2\u7aef\u786c\u789f',
   driveProject: '\u7d81\u5b9a\u5c08\u6848',
   connected: '\u5df2\u9023\u7dda',
   disconnected: '\u672a\u9023\u7dda',
@@ -41,11 +41,11 @@ const T = {
   importDone: '\u532f\u5165\u5b8c\u6210\uff0c\u9801\u9762\u5c07\u91cd\u65b0\u8f09\u5165\u3002',
   importFailed: '\u532f\u5165\u5931\u6557',
   exportFailed: '\u532f\u51fa\u5931\u6557',
-  cloudMissingClient: '\u5c1a\u672a\u8a2d\u5b9a Google OAuth Client ID\u3002\u8acb\u5728 Vercel \u52a0\u5165 VITE_GOOGLE_CLIENT_ID\u3002',
-  cloudUploadDone: '\u5df2\u4e0a\u50b3\u5230 Google Drive',
-  cloudDownloadDone: '\u5df2\u5f9e Google Drive \u532f\u5165\u5099\u4efd',
-  cloudFailed: 'Google Drive \u5099\u4efd\u5931\u6557',
-  noCloudBackup: '\u627e\u4e0d\u5230 Google Drive \u5099\u4efd',
+  cloudMissingClient: '\u5c1a\u672a\u8a2d\u5b9a Google OAuth \u7528\u6236\u7aef ID\u3002\u8acb\u5728 Vercel \u52a0\u5165 VITE_GOOGLE_CLIENT_ID\u3002',
+  cloudUploadDone: '\u5df2\u4e0a\u50b3\u5230 Google \u96f2\u7aef\u786c\u789f',
+  cloudDownloadDone: '\u5df2\u5f9e Google \u96f2\u7aef\u786c\u789f\u532f\u5165\u5099\u4efd',
+  cloudFailed: 'Google \u96f2\u7aef\u786c\u789f\u5099\u4efd\u5931\u6557',
+  noCloudBackup: '\u627e\u4e0d\u5230 Google \u96f2\u7aef\u786c\u789f\u5099\u4efd',
   backupPreview: '\u5099\u4efd\u5dee\u7570\u9810\u89bd',
   localData: '\u672c\u6a5f\u8cc7\u6599',
   cloudData: '\u96f2\u7aef\u5099\u4efd',
@@ -161,7 +161,7 @@ export function Settings() {
       if (localCount === 0 && cloudFiles.length > 0) {
         const latestCloud = await downloadDriveBackup(accessToken, cloudFiles[0].id);
         if (getBackupTotalCount(latestCloud.counts) > 0) {
-          toast.error('\u672c\u6a5f\u662f\u7a7a\u767d\u8cc7\u6599\uff0c\u5df2\u963b\u64cb\u8986\u84cb Google Drive \u5099\u4efd\u3002');
+          toast.error('\u672c\u6a5f\u662f\u7a7a\u767d\u8cc7\u6599\uff0c\u5df2\u963b\u64cb\u8986\u84cb Google \u96f2\u7aef\u786c\u789f\u5099\u4efd\u3002');
           return;
         }
       }
@@ -204,7 +204,7 @@ export function Settings() {
 
       const latestBackup = await downloadDriveBackup(accessToken, cloudFiles[0].id);
       if (getBackupTotalCount(latestBackup.counts) === 0) {
-        const ok = window.confirm('\u6700\u65b0 Google Drive \u5099\u4efd\u662f\u7a7a\u767d\u8cc7\u6599\u3002\u4ecd\u8981\u532f\u5165\u55ce\uff1f');
+        const ok = window.confirm('\u6700\u65b0 Google \u96f2\u7aef\u786c\u789f\u5099\u4efd\u662f\u7a7a\u767d\u8cc7\u6599\u3002\u4ecd\u8981\u532f\u5165\u55ce\uff1f');
         if (!ok) return;
       }
 

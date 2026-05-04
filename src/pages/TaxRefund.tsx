@@ -189,7 +189,7 @@ export function TaxRefund() {
           {photoUrls.length > 0 && (
             <div className="flex gap-3 overflow-x-auto pb-1">
               {photoUrls.map((url, index) => (
-                <img key={index} src={url} alt={`Tax refund ${index + 1}`} className="w-28 h-28 rounded-2xl object-cover border border-divider" />
+                <img key={index} src={url} alt={`\u9000\u7a05\u7167\u7247 ${index + 1}`} className="w-28 h-28 rounded-2xl object-cover border border-divider" />
               ))}
             </div>
           )}

@@ -25,8 +25,8 @@ const T = {
   itemSection: '\u54c1\u9805\u660e\u7d30',
   splitSummary: '\u6b78\u5c6c\u7d71\u8a08',
   splitHint: '\u672a\u6307\u5b9a\u54c1\u9805\u6703\u6b78\u5230\u6536\u64da\u5927\u6b78\u985e',
-  itemName: '\u54c1\u540d',
-  translatedName: '\u4e2d\u6587/\u5099\u8a3b',
+  itemName: '\u65e5\u6587\u539f\u6587',
+  translatedName: '\u4e2d\u6587\u54c1\u540d',
   unitPrice: '\u55ae\u50f9',
   quantity: '\u6578\u91cf',
   owner: '\u6b78\u5c6c\uff08\u53ef\u7a7a\u767d\uff09',
@@ -34,8 +34,10 @@ const T = {
   cancel: '\u53d6\u6d88',
   addItem: '\u65b0\u589e\u54c1\u9805',
   receiptInfo: '\u6536\u64da\u8cc7\u8a0a',
-  storeName: '\u5e97\u5bb6\u540d\u7a31',
-  storePlaceholder: '\u4f8b\uff1a7-11\u3001\u85e5\u599d\u5e97',
+  storeName: '\u5e97\u5bb6\u4e2d\u6587\u540d\u7a31',
+  storeOriginalName: '\u5e97\u5bb6\u65e5\u6587\u539f\u6587',
+  storePlaceholder: '\u4f8b\uff1a\u4e03\u8457\u4fbf\u5229\u5546\u5e97\u3001\u85e5\u599d\u5e97',
+  storeOriginalPlaceholder: '\u4f8b\uff1a\u30bb\u30d6\u30f3-\u30a4\u30ec\u30d6\u30f3',
   dateTime: '\u65e5\u671f\u6642\u9593',
   currency: '\u5e63\u5225',
   totalPaid: '\u5be6\u4ed8\u7e3d\u984d',
@@ -204,7 +206,8 @@ export function ReceiptDetail() {
     notes: '',
     photoUrl: '',
     photoUrls: [] as string[],
-    storeName: ''
+    storeName: '',
+    translatedStoreName: ''
   });
 
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
@@ -268,6 +271,7 @@ export function ReceiptDetail() {
             photoUrl: data.photoUrl || '',
             photoUrls: data.photoUrls || [],
             storeName: data.storeName || '',
+            translatedStoreName: data.translatedStoreName || '',
             totalDiscount: data.totalDiscount || 0,
             totalTaxRefund: data.totalTaxRefund || 0
           });
@@ -441,7 +445,7 @@ export function ReceiptDetail() {
           const itemRef = doc(collection(db, `users/${auth.currentUser.uid}/receipts/${receiptId}/items`));
           try {
             await setDoc(itemRef, {
-              name: item.name || 'Unknown Item',
+              name: item.name || '\u672a\u8fa8\u8b58\u54c1\u9805',
               translatedName: item.translatedName || '',
               price: Number(item.price) || 0,
               quantity: Number(item.quantity) || 1,
@@ -547,10 +551,10 @@ export function ReceiptDetail() {
         quantity: Number(editItemData.quantity),
         tag: editItemData.tag || ''
       });
-      toast.success('蝯董???湔??');
+      toast.success('\u54c1\u9805\u5df2\u66f4\u65b0');
     } catch (error) {
       handleDatabaseError(error, OperationType.UPDATE, `users/${auth.currentUser.uid}/receipts/${id}/items/${itemId}`);
-      toast.error('蝯董???湔憭望?');
+      toast.error('\u54c1\u9805\u66f4\u65b0\u5931\u6557');
     }
     setEditingItemId(null);
   };
@@ -575,8 +579,8 @@ export function ReceiptDetail() {
     if (!auth.currentUser || !id) return;
     setModalConfig({
       isOpen: true,
-      title: '蝣箄??芷',
-      message: '蝣箏?閬?斗迨???',
+      title: '\u78ba\u8a8d\u522a\u9664',
+      message: '\u78ba\u5b9a\u8981\u522a\u9664\u9019\u500b\u54c1\u9805\u55ce\uff1f',
       type: 'confirm',
       onConfirm: async () => {
         const itemRef = doc(db, `users/${auth.currentUser!.uid}/receipts/${id}/items/${itemId}`);
@@ -585,7 +589,7 @@ export function ReceiptDetail() {
           toast.success('\u54c1\u9805\u5df2\u522a\u9664');
         } catch (error) {
           handleDatabaseError(error, OperationType.DELETE, `users/${auth.currentUser?.uid}/receipts/${id}/items/${itemId}`);
-          toast.error('?芷憭望?');
+          toast.error('\u522a\u9664\u5931\u6557');
         }
       }
     });
@@ -612,7 +616,7 @@ export function ReceiptDetail() {
 
     setUploading(true);
     setUploadProgress(10);
-    setUploadStatus(`Compressing ${files.length} image(s)...`);
+    setUploadStatus(`\u6b63\u5728\u58d3\u7e2e ${files.length} \u5f35\u5716\u7247...`);
 
     const modelFallbackOrder = getModelFallbackOrder(DEFAULT_OCR_MODEL);
 
@@ -639,11 +643,11 @@ export function ReceiptDetail() {
       try {
         payload = payloadText ? JSON.parse(payloadText) : {};
       } catch {
-        throw new Error(`OCR API returned non-JSON response (${response.status})`);
+        throw new Error(`OCR API \u56de\u50b3\u683c\u5f0f\u4e0d\u662f JSON\uff08${response.status}\uff09`);
       }
 
       if (!response.ok) {
-        throw new Error(payload?.error || payload?.message || `OCR API HTTP ${response.status}`);
+        throw new Error(payload?.error || payload?.message || `OCR API \u8acb\u6c42\u5931\u6557\uff08HTTP ${response.status}\uff09`);
       }
 
       const result = payload.result || payload.data || payload.receipt || payload;
@@ -655,7 +659,7 @@ export function ReceiptDetail() {
       const { result, compressedDataUrls, ocrMeta } = await performBackendOCR();
       
       setUploadProgress(90);
-      setUploadStatus('Applying OCR result...');
+      setUploadStatus('\u6b63\u5728\u5957\u7528\u8fa8\u8b58\u7d50\u679c...');
 
       const rawItems = Array.isArray(result.items) ? result.items : [];
       const discountItems = rawItems.filter((item: any) => matchesAdjustment(item, DISCOUNT_ITEM_PATTERN));
@@ -670,6 +674,7 @@ export function ReceiptDetail() {
         photoUrl: compressedDataUrls[0],
         photoUrls: compressedDataUrls,
         storeName: result.storeName || receipt.storeName,
+        translatedStoreName: result.translatedStoreName || result.storeTranslatedName || receipt.translatedStoreName,
         totalAmount: result.totalAmount || receipt.totalAmount,
         date: result.date ? normalizeDate(result.date).slice(0, 16) : receipt.date,
         totalDiscount,
@@ -684,7 +689,7 @@ export function ReceiptDetail() {
 
       if (rawItems.length > 0) {
         const newItems = rawItems.map((item: any) => ({
-          name: item.name || 'Unknown Item',
+          name: item.name || '\u672a\u8fa8\u8b58\u54c1\u9805',
           translatedName: item.translatedName || '',
           price: Number(item.price) || 0,
           quantity: Number(item.quantity) || 1,
@@ -696,20 +701,20 @@ export function ReceiptDetail() {
       setModalConfig({
         isOpen: true,
         title: T.apiTestSuccess,
-        message: 'Receipt items were recognized. Review the owner field for each item before saving.',
+        message: '\u5df2\u8fa8\u8b58\u6536\u64da\u54c1\u9805\u3002\u5132\u5b58\u524d\u8acb\u78ba\u8a8d\u6bcf\u7b46\u54c1\u9805\u7684\u6b78\u5c6c\u3002',
         type: 'success'
       });
 
     } catch (error: any) {
       console.error('Error processing receipt OCR:', error);
-      let errorMessage = error?.message || 'OCR failed. Please check the API URL and response format.';
+      let errorMessage = error?.message || 'OCR \u8fa8\u8b58\u5931\u6557\uff0c\u8acb\u6aa2\u67e5\u5f8c\u7aef API \u8207\u56de\u50b3\u683c\u5f0f\u3002';
       
       if (error?.message?.includes('429') || error?.message?.includes('Resource has been exhausted') || error?.message?.includes('Quota')) {
-        errorMessage = 'OCR quota is exhausted. Try again later or switch API credentials.';
+        errorMessage = 'OCR \u984d\u5ea6\u5df2\u7528\u5b8c\uff0c\u8acb\u7a0d\u5f8c\u518d\u8a66\u6216\u66f4\u63db\u5f8c\u7aef API \u91d1\u9470\u3002';
       } else if (error?.message?.includes('Safety') || error?.message?.includes('blocked')) {
-        errorMessage = 'OCR was blocked by the AI safety filter. Try another receipt image.';
+        errorMessage = 'OCR \u88ab AI \u5b89\u5168\u898f\u5247\u963b\u64cb\uff0c\u8acb\u6539\u7528\u53e6\u4e00\u5f35\u6536\u64da\u5716\u7247\u3002';
       } else if (error?.message?.includes('API key not valid')) {
-        errorMessage = 'Gemini API key is invalid on the OCR backend.';
+        errorMessage = '\u5f8c\u7aef Gemini API \u91d1\u9470\u7121\u6548\u3002';
       }
 
       setModalConfig({
@@ -735,7 +740,7 @@ export function ReceiptDetail() {
         </button>
         <div>
           <h1 className="text-2xl font-serif font-black text-ink tracking-tight">{isNew ? T.newReceipt : T.editReceipt}</h1>
-          <p className="text-[10px] font-bold text-ink/30 uppercase tracking-[0.2em]">Receipt Cost Split</p>
+          <p className="text-[10px] font-bold text-ink/30 uppercase tracking-[0.2em]">\u6536\u64da\u6210\u672c\u5206\u6524</p>
         </div>
       </header>
 
@@ -829,7 +834,7 @@ export function ReceiptDetail() {
               <h2 className="text-lg font-serif font-bold text-ink">{T.itemSection}</h2>
               <p className="text-[10px] font-bold text-ink/35 uppercase tracking-widest mt-1">{T.splitHint}</p>
             </div>
-            <span className="text-[10px] font-bold text-ink/30 uppercase tracking-widest">Items</span>
+            <span className="text-[10px] font-bold text-ink/30 uppercase tracking-widest">\u54c1\u9805</span>
           </div>
 
           {splitSummary.length > 0 && (
@@ -860,8 +865,8 @@ export function ReceiptDetail() {
                 <div key={rowId} className="p-4 bg-primary-blue/5 rounded-2xl border border-primary-blue/20">
                   {editingItemId === rowId ? (
                     <div className="space-y-3">
-                      <input type="text" value={editItemData.name} onChange={e => setEditItemData({ ...editItemData, name: e.target.value })} className="w-full p-2 bg-white border border-divider rounded-xl outline-none text-ink font-bold" placeholder={T.itemName} />
-                      <input type="text" value={editItemData.translatedName} onChange={e => setEditItemData({ ...editItemData, translatedName: e.target.value })} className="w-full p-2 bg-white border border-divider rounded-xl outline-none text-ink/60 text-xs" placeholder={T.translatedName} />
+                      <input type="text" value={editItemData.translatedName} onChange={e => setEditItemData({ ...editItemData, translatedName: e.target.value })} className="w-full p-2 bg-white border border-divider rounded-xl outline-none text-ink font-bold" placeholder={T.translatedName} />
+                      <input type="text" value={editItemData.name} onChange={e => setEditItemData({ ...editItemData, name: e.target.value })} className="w-full p-2 bg-white border border-divider rounded-xl outline-none text-ink/60 text-xs" placeholder={T.itemName} />
                       <div className="flex gap-2">
                         <input type="number" value={editItemData.price} onChange={e => setEditItemData({ ...editItemData, price: e.target.value })} className="flex-1 p-2 bg-white border border-divider rounded-xl outline-none text-ink font-bold" placeholder={T.unitPrice} />
                         <input type="number" value={editItemData.quantity} onChange={e => setEditItemData({ ...editItemData, quantity: e.target.value })} className="w-20 p-2 bg-white border border-divider rounded-xl outline-none text-ink font-bold text-center" placeholder={T.quantity} />
@@ -872,8 +877,8 @@ export function ReceiptDetail() {
                   ) : (
                     <div className="flex justify-between items-center gap-3">
                       <div className="cursor-pointer flex-1 min-w-0" onClick={() => startEditing(item, true, idx)}>
-                        <p className="font-bold text-ink flex items-center gap-1 flex-wrap"><Sparkles className="w-3 h-3 text-primary-blue" />{item.name}{(item.tag || normalizedReceiptCategory) && <span className={`px-2 py-0.5 rounded-lg text-[10px] font-bold ml-1 ${item.tag ? 'bg-red-100 text-red-600' : 'bg-ink/5 text-ink/35'}`}>{item.tag || normalizedReceiptCategory}</span>}</p>
-                        {item.translatedName && <p className="text-[10px] font-bold text-ink/40 mb-1 ml-4">{item.translatedName}</p>}
+                        <p className="font-bold text-ink flex items-center gap-1 flex-wrap"><Sparkles className="w-3 h-3 text-primary-blue" />{item.translatedName || item.name}{(item.tag || normalizedReceiptCategory) && <span className={`px-2 py-0.5 rounded-lg text-[10px] font-bold ml-1 ${item.tag ? 'bg-red-100 text-red-600' : 'bg-ink/5 text-ink/35'}`}>{item.tag || normalizedReceiptCategory}</span>}</p>
+                        {item.translatedName && item.name && <p className="text-[10px] font-bold text-ink/40 mb-1 ml-4">{item.name}</p>}
                         {item.source && <p className="text-[9px] font-medium text-primary-blue/50 mb-1 ml-4">{item.source}</p>}
                         <p className="text-[10px] font-bold text-primary-blue/70 uppercase tracking-wider">{currencySymbol} {item.price} x {item.quantity}</p>
                       </div>
@@ -890,8 +895,8 @@ export function ReceiptDetail() {
                 <div key={item.id} className="p-4 bg-background rounded-2xl border border-divider">
                   {editingItemId === item.id ? (
                     <div className="space-y-3">
-                      <input type="text" value={editItemData.name} onChange={e => setEditItemData({ ...editItemData, name: e.target.value })} className="w-full p-2 bg-white border border-divider rounded-xl outline-none text-ink font-bold" placeholder={T.itemName} />
-                      <input type="text" value={editItemData.translatedName} onChange={e => setEditItemData({ ...editItemData, translatedName: e.target.value })} className="w-full p-2 bg-white border border-divider rounded-xl outline-none text-ink/60 text-xs" placeholder={T.translatedName} />
+                      <input type="text" value={editItemData.translatedName} onChange={e => setEditItemData({ ...editItemData, translatedName: e.target.value })} className="w-full p-2 bg-white border border-divider rounded-xl outline-none text-ink font-bold" placeholder={T.translatedName} />
+                      <input type="text" value={editItemData.name} onChange={e => setEditItemData({ ...editItemData, name: e.target.value })} className="w-full p-2 bg-white border border-divider rounded-xl outline-none text-ink/60 text-xs" placeholder={T.itemName} />
                       <div className="flex gap-2"><input type="number" value={editItemData.price} onChange={e => setEditItemData({ ...editItemData, price: e.target.value })} className="flex-1 p-2 bg-white border border-divider rounded-xl outline-none text-ink font-bold" placeholder={T.unitPrice} /><input type="number" value={editItemData.quantity} onChange={e => setEditItemData({ ...editItemData, quantity: e.target.value })} className="w-20 p-2 bg-white border border-divider rounded-xl outline-none text-ink font-bold text-center" placeholder={T.quantity} /></div>
                       <Autocomplete value={editItemData.tag} onChange={val => setEditItemData({ ...editItemData, tag: val })} options={OWNER_OPTIONS} className="w-full p-2 bg-white border border-divider rounded-xl outline-none text-ink text-sm" placeholder={T.owner} />
                       <div className="flex gap-2"><button onClick={() => handleUpdateItem(item.id)} className="flex-1 bg-primary-blue text-white font-bold py-2 rounded-xl text-xs">{T.save}</button><button onClick={() => setEditingItemId(null)} className="flex-1 bg-ink/10 text-ink font-bold py-2 rounded-xl text-xs">{T.cancel}</button></div>
@@ -899,8 +904,8 @@ export function ReceiptDetail() {
                   ) : (
                     <div className="flex justify-between items-center gap-3">
                       <div className="cursor-pointer flex-1 min-w-0" onClick={() => startEditing(item)}>
-                        <p className="font-bold text-ink flex items-center gap-2 flex-wrap">{item.name}{(item.tag || normalizedReceiptCategory) && <span className={`px-2 py-0.5 rounded-lg text-[10px] font-bold ${item.tag ? 'bg-red-100 text-red-600' : 'bg-ink/5 text-ink/35'}`}>{item.tag || normalizedReceiptCategory}</span>}</p>
-                        {item.translatedName && <p className="text-[10px] font-bold text-ink/40 mb-1">{item.translatedName}</p>}
+                        <p className="font-bold text-ink flex items-center gap-2 flex-wrap">{item.translatedName || item.name}{(item.tag || normalizedReceiptCategory) && <span className={`px-2 py-0.5 rounded-lg text-[10px] font-bold ${item.tag ? 'bg-red-100 text-red-600' : 'bg-ink/5 text-ink/35'}`}>{item.tag || normalizedReceiptCategory}</span>}</p>
+                        {item.translatedName && item.name && <p className="text-[10px] font-bold text-ink/40 mb-1">{item.name}</p>}
                         {item.source && <p className="text-[9px] font-medium text-ink/30 mb-1">{item.source}</p>}
                         <p className="text-[10px] font-bold text-ink/50 uppercase tracking-wider">{currencySymbol} {item.price} x {item.quantity}</p>
                       </div>
@@ -913,7 +918,7 @@ export function ReceiptDetail() {
           </div>
 
           <form onSubmit={handleAddItem} className="pt-6 border-t border-divider space-y-4">
-            <div className="space-y-2"><input type="text" placeholder={T.itemName} value={newItem.name} onChange={e => setNewItem({ ...newItem, name: e.target.value })} className="w-full p-4 bg-background border border-divider rounded-2xl focus:ring-2 focus:ring-primary-blue outline-none font-bold text-ink placeholder:text-ink/30" required /><input type="text" placeholder={T.translatedName} value={newItem.translatedName} onChange={e => setNewItem({ ...newItem, translatedName: e.target.value })} className="w-full p-3 bg-background border border-divider rounded-2xl focus:ring-2 focus:ring-primary-blue outline-none text-sm text-ink/60 placeholder:text-ink/20" /></div>
+            <div className="space-y-2"><input type="text" placeholder={T.translatedName} value={newItem.translatedName} onChange={e => setNewItem({ ...newItem, translatedName: e.target.value })} className="w-full p-4 bg-background border border-divider rounded-2xl focus:ring-2 focus:ring-primary-blue outline-none font-bold text-ink placeholder:text-ink/30" /><input type="text" placeholder={T.itemName} value={newItem.name} onChange={e => setNewItem({ ...newItem, name: e.target.value })} className="w-full p-3 bg-background border border-divider rounded-2xl focus:ring-2 focus:ring-primary-blue outline-none text-sm text-ink/60 placeholder:text-ink/20" required /></div>
             <div className="flex gap-4"><input type="number" placeholder={`${T.unitPrice} (${currencySymbol})`} value={newItem.price} onChange={e => setNewItem({ ...newItem, price: e.target.value })} className="flex-1 p-4 bg-background border border-divider rounded-2xl focus:ring-2 focus:ring-primary-blue outline-none font-bold text-ink placeholder:text-ink/30" required /><input type="number" placeholder={T.quantity} value={newItem.quantity} onChange={e => setNewItem({ ...newItem, quantity: e.target.value })} className="w-24 p-4 bg-background border border-divider rounded-2xl focus:ring-2 focus:ring-primary-blue outline-none font-bold text-ink placeholder:text-ink/30 text-center" required min="1" /></div>
             <Autocomplete value={newItem.tag} onChange={val => setNewItem({ ...newItem, tag: val })} options={OWNER_OPTIONS} className="w-full p-4 bg-background border border-divider rounded-2xl focus:ring-2 focus:ring-primary-blue outline-none text-ink font-bold" placeholder={T.owner} />
             <button type="submit" className="w-full bg-ink text-white font-bold p-4 rounded-2xl hover:opacity-90 flex items-center justify-center gap-2 transition-all active:scale-95"><Plus className="w-5 h-5" />{T.addItem}</button>
@@ -923,7 +928,7 @@ export function ReceiptDetail() {
         <div className="bg-card-white p-6 rounded-3xl shadow-sm border border-divider space-y-6">
           <h2 className="text-lg font-serif font-bold text-ink">{T.receiptInfo}</h2>
           <div className="grid grid-cols-1 gap-4">
-            <div><label className="block text-[10px] font-bold text-ink/40 mb-1.5 uppercase tracking-widest">{T.storeName}</label><input type="text" placeholder={T.storePlaceholder} value={receipt.storeName || ''} onChange={e => setReceipt({ ...receipt, storeName: e.target.value })} className="w-full p-4 bg-background border border-divider rounded-2xl focus:ring-2 focus:ring-primary-blue outline-none font-bold text-ink text-sm" /></div>
+            <div className="space-y-2"><label className="block text-[10px] font-bold text-ink/40 mb-1.5 uppercase tracking-widest">{T.storeName}</label><input type="text" placeholder={T.storePlaceholder} value={receipt.translatedStoreName || ''} onChange={e => setReceipt({ ...receipt, translatedStoreName: e.target.value })} className="w-full p-4 bg-background border border-divider rounded-2xl focus:ring-2 focus:ring-primary-blue outline-none font-bold text-ink text-base" /><label className="block text-[10px] font-bold text-ink/30 mb-1.5 uppercase tracking-widest">{T.storeOriginalName}</label><input type="text" placeholder={T.storeOriginalPlaceholder} value={receipt.storeName || ''} onChange={e => setReceipt({ ...receipt, storeName: e.target.value })} className="w-full p-3 bg-background border border-divider rounded-2xl focus:ring-2 focus:ring-primary-blue outline-none font-bold text-ink/55 text-xs" /></div>
             <div><label className="block text-[10px] font-bold text-ink/40 mb-1.5 uppercase tracking-widest">{T.dateTime}</label><input type="datetime-local" value={receipt.date} onChange={e => setReceipt({ ...receipt, date: e.target.value })} className="w-full p-4 bg-background border border-divider rounded-2xl focus:ring-2 focus:ring-primary-blue outline-none font-bold text-ink text-xs" /></div>
             <div className="grid grid-cols-3 gap-4"><div className="col-span-1"><label className="block text-[10px] font-bold text-ink/40 mb-1.5 uppercase tracking-widest">{T.currency}</label><select value={receipt.currency || 'JPY'} onChange={e => setReceipt({ ...receipt, currency: e.target.value })} className="w-full p-4 bg-background border border-divider rounded-2xl focus:ring-2 focus:ring-primary-blue outline-none font-bold text-ink appearance-none"><option value="JPY">JPY</option><option value="TWD">TWD</option><option value="KRW">KRW</option><option value="USD">USD</option></select></div><div className="col-span-2"><label className="block text-[10px] font-bold text-ink/40 mb-1.5 uppercase tracking-widest">{T.totalPaid}</label><input type="number" value={receipt.totalAmount} onChange={e => setReceipt({ ...receipt, totalAmount: Number(e.target.value) })} disabled={items.length > 0 || pendingAiItems.length > 0} className="w-full p-4 bg-background border border-divider rounded-2xl focus:ring-2 focus:ring-primary-blue outline-none disabled:opacity-50 font-serif font-bold text-ink text-lg" /></div></div>
             <div className="grid grid-cols-2 gap-4"><div><label className="block text-[10px] font-bold text-ink/40 mb-1.5 uppercase tracking-widest">{T.discount}</label><input type="number" value={receipt.totalDiscount || ''} onChange={e => setReceipt({ ...receipt, totalDiscount: Number(e.target.value) })} className="w-full p-4 bg-background border border-divider rounded-2xl focus:ring-2 focus:ring-primary-blue outline-none font-serif font-bold text-green-600 text-sm" placeholder="0" /></div><div><label className="block text-[10px] font-bold text-ink/40 mb-1.5 uppercase tracking-widest">{T.taxRefund}</label><input type="number" value={receipt.totalTaxRefund || ''} onChange={e => setReceipt({ ...receipt, totalTaxRefund: Number(e.target.value) })} className="w-full p-4 bg-background border border-divider rounded-2xl focus:ring-2 focus:ring-primary-blue outline-none font-serif font-bold text-blue-600 text-sm" placeholder="0" /></div></div>

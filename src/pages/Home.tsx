@@ -343,7 +343,7 @@ function RecordCard({ record, onDelete }: { record: any; onDelete: (event: Mouse
       <div className="flex justify-between items-start gap-4">
         <div className="flex items-start gap-4 min-w-0">
           {record.photoUrl ? (
-            <img src={record.photoUrl || undefined} alt="Receipt" className="w-14 h-14 rounded-2xl object-cover shadow-sm flex-shrink-0" />
+            <img src={record.photoUrl || undefined} alt="\u6536\u64da\u7167\u7247" className="w-14 h-14 rounded-2xl object-cover shadow-sm flex-shrink-0" />
           ) : (
             <div className="w-14 h-14 rounded-2xl bg-background flex items-center justify-center flex-shrink-0">
               {isRefund ? (
@@ -369,8 +369,11 @@ function RecordCard({ record, onDelete }: { record: any; onDelete: (event: Mouse
             </div>
 
             <p className="font-bold text-ink text-sm mb-1 truncate max-w-[180px]">
-              {record.storeName || record.notes || (isRefund ? T.taxRefund : isTransfer ? T.exchangeRecord : T.unnamedReceipt)}
+              {record.translatedStoreName || record.storeName || record.notes || (isRefund ? T.taxRefund : isTransfer ? T.exchangeRecord : T.unnamedReceipt)}
             </p>
+            {isReceipt && record.translatedStoreName && record.storeName && (
+              <p className="text-[10px] font-bold text-ink/35 mb-1 truncate max-w-[180px]">{record.storeName}</p>
+            )}
 
             <div className="flex items-center gap-1 text-xs text-ink/70 font-medium mb-2">
               <CreditCard className="w-3 h-3 text-ink/30" />

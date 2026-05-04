@@ -158,7 +158,7 @@ export const importBackupPayload = async (uid: string, data: BackupPayload) => {
 export const requestDriveAccessToken = (clientId: string, prompt = '') => {
   return new Promise<string>((resolve, reject) => {
     if (!window.google?.accounts?.oauth2) {
-      reject(new Error('Google Identity Services 尚未載入，請重新整理頁面或檢查網路是否阻擋 accounts.google.com。'));
+      reject(new Error('Google \u767b\u5165\u670d\u52d9\u5c1a\u672a\u8f09\u5165\uff0c\u8acb\u91cd\u65b0\u6574\u7406\u9801\u9762\u6216\u6aa2\u67e5\u7db2\u8def\u662f\u5426\u963b\u64cb accounts.google.com\u3002'));
       return;
     }
 
@@ -167,7 +167,7 @@ export const requestDriveAccessToken = (clientId: string, prompt = '') => {
       scope: DRIVE_SCOPE,
       callback: response => {
         if (response.error || !response.access_token) {
-          reject(new Error(response.error || 'Google Drive authorization failed.'));
+          reject(new Error(response.error || 'Google \u96f2\u7aef\u786c\u789f\u6388\u6b0a\u5931\u6557\u3002'));
           return;
         }
         localStorage.setItem(DRIVE_TOKEN_KEY, response.access_token);
@@ -176,7 +176,7 @@ export const requestDriveAccessToken = (clientId: string, prompt = '') => {
     });
 
     if (!tokenClient) {
-      reject(new Error('Google Identity Services is not ready.'));
+      reject(new Error('Google \u767b\u5165\u670d\u52d9\u5c1a\u672a\u5c31\u7dd2\u3002'));
       return;
     }
 
@@ -212,7 +212,7 @@ export const listDriveBackups = async (accessToken: string): Promise<DriveBackup
 
   if (!response.ok) {
     const message = await response.text().catch(() => '');
-    throw new Error(`Google Drive list failed (${response.status}) ${message}`);
+    throw new Error(`\u8b80\u53d6 Google \u96f2\u7aef\u786c\u789f\u5099\u4efd\u6e05\u55ae\u5931\u6557\uff08${response.status}\uff09${message}`);
   }
   const payload = await response.json();
   return payload.files || [];
@@ -225,7 +225,7 @@ export const downloadDriveBackup = async (accessToken: string, fileId: string): 
 
   if (!response.ok) {
     const message = await response.text().catch(() => '');
-    throw new Error(`Google Drive download failed (${response.status}) ${message}`);
+    throw new Error(`\u4e0b\u8f09 Google \u96f2\u7aef\u786c\u789f\u5099\u4efd\u5931\u6557\uff08${response.status}\uff09${message}`);
   }
   return response.json();
 };
@@ -263,7 +263,7 @@ export const uploadDriveBackup = async (accessToken: string, data: BackupPayload
 
   if (!response.ok) {
     const message = await response.text().catch(() => '');
-    throw new Error(`Google Drive upload failed (${response.status}) ${message}`);
+    throw new Error(`\u4e0a\u50b3 Google \u96f2\u7aef\u786c\u789f\u5099\u4efd\u5931\u6557\uff08${response.status}\uff09${message}`);
   }
   return response.json();
 };
