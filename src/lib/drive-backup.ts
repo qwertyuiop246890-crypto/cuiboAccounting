@@ -157,6 +157,11 @@ export const importBackupPayload = async (uid: string, data: BackupPayload) => {
 
 export const requestDriveAccessToken = (clientId: string, prompt = '') => {
   return new Promise<string>((resolve, reject) => {
+    if (!window.google?.accounts?.oauth2) {
+      reject(new Error('Google Identity Services 尚未載入，請重新整理頁面或檢查網路是否阻擋 accounts.google.com。'));
+      return;
+    }
+
     const tokenClient = window.google?.accounts?.oauth2?.initTokenClient({
       client_id: clientId,
       scope: DRIVE_SCOPE,
@@ -175,7 +180,7 @@ export const requestDriveAccessToken = (clientId: string, prompt = '') => {
       return;
     }
 
-    tokenClient.requestAccessToken({prompt});
+    tokenClient.requestAccessToken(prompt ? {prompt} : undefined);
   });
 };
 
@@ -205,7 +210,10 @@ export const listDriveBackups = async (accessToken: string): Promise<DriveBackup
     headers: {Authorization: `Bearer ${accessToken}`}
   });
 
-  if (!response.ok) throw new Error(`Google Drive list failed (${response.status})`);
+  if (!response.ok) {
+    const message = await response.text().catch(() => '');
+    throw new Error(`Google Drive list failed (${response.status}) ${message}`);
+  }
   const payload = await response.json();
   return payload.files || [];
 };
@@ -215,7 +223,10 @@ export const downloadDriveBackup = async (accessToken: string, fileId: string): 
     headers: {Authorization: `Bearer ${accessToken}`}
   });
 
-  if (!response.ok) throw new Error(`Google Drive download failed (${response.status})`);
+  if (!response.ok) {
+    const message = await response.text().catch(() => '');
+    throw new Error(`Google Drive download failed (${response.status}) ${message}`);
+  }
   return response.json();
 };
 
@@ -250,6 +261,9 @@ export const uploadDriveBackup = async (accessToken: string, data: BackupPayload
     body: new Blob(body, {type: `multipart/related; boundary=${boundary}`})
   });
 
-  if (!response.ok) throw new Error(`Google Drive upload failed (${response.status})`);
+  if (!response.ok) {
+    const message = await response.text().catch(() => '');
+    throw new Error(`Google Drive upload failed (${response.status}) ${message}`);
+  }
   return response.json();
 };
