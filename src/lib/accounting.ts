@@ -92,6 +92,7 @@ export const deriveAccountBalances = (
 
 const DISCOUNT_ITEM_PATTERN = /値引|割引|クーポン|coupon|discount|折扣|優惠/i;
 const TAX_REFUND_ITEM_PATTERN = /tax\s*free|tax\s*refund|免税|免稅|退税|退稅/i;
+const INCLUDED_TAX_INFO_PATTERN = /うち\s*消費税|内\s*消費税|消費税等|內含稅|內含消費稅|內消費稅|included\s*tax/i;
 
 export type ReceiptLineItem = {
   name?: string;
@@ -112,6 +113,17 @@ const adjustmentTotal = (items: ReceiptLineItem[], pattern: RegExp) => {
     .reduce((sum, item) => sum + Math.abs(toAmount(item.price) * (Math.abs(toAmount(item.quantity)) || 1)), 0);
 };
 
+const isIncludedTaxInfoItem = (item: ReceiptLineItem, hasTaxRefund: boolean) => {
+  if (!hasTaxRefund || toAmount(item.price) <= 0) return false;
+  const text = `${item.name || ''} ${item.translatedName || ''} ${item.source || ''}`;
+  return INCLUDED_TAX_INFO_PATTERN.test(text);
+};
+
+const getPayableItems = (items: ReceiptLineItem[], totalTaxRefund = 0) => {
+  const hasTaxRefund = toAmount(totalTaxRefund) > 0 || items.some(item => matchesAdjustment(item, TAX_REFUND_ITEM_PATTERN));
+  return items.filter(item => !isIncludedTaxInfoItem(item, hasTaxRefund));
+};
+
 const roundMoney = (amount: number) => Math.round(amount * 100) / 100;
 
 export const calculateReceiptReconciliation = ({
@@ -125,9 +137,10 @@ export const calculateReceiptReconciliation = ({
   totalDiscount?: number;
   totalTaxRefund?: number;
 }) => {
-  const itemTotal = items.reduce((sum, item) => sum + toAmount(item.price) * (toAmount(item.quantity) || 1), 0);
-  const itemDiscountTotal = adjustmentTotal(items, DISCOUNT_ITEM_PATTERN);
-  const itemTaxRefundTotal = adjustmentTotal(items, TAX_REFUND_ITEM_PATTERN);
+  const payableItems = getPayableItems(items, totalTaxRefund);
+  const itemTotal = payableItems.reduce((sum, item) => sum + toAmount(item.price) * (toAmount(item.quantity) || 1), 0);
+  const itemDiscountTotal = adjustmentTotal(payableItems, DISCOUNT_ITEM_PATTERN);
+  const itemTaxRefundTotal = adjustmentTotal(payableItems, TAX_REFUND_ITEM_PATTERN);
   const extraDiscount = Math.max(0, toAmount(totalDiscount) - itemDiscountTotal);
   const extraTaxRefund = Math.max(0, toAmount(totalTaxRefund) - itemTaxRefundTotal);
   const calculatedTotal = roundMoney(itemTotal - extraDiscount - extraTaxRefund);

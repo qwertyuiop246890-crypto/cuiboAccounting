@@ -98,8 +98,10 @@ const buildPrompt = () => `
 2. 如果只有一個金額，quantity=1。
 3. 折扣列例如「値引額 -12」「割引」「クーポン」「優惠」「折扣」請把絕對值加總到 totalDiscount；例如「値引額 -12」輸出 totalDiscount=12。若也放入 items，price 請保留負數。
 4. 退稅列例如「Tax Free」「免税」「免稅」「退税」「退稅」請把絕對值加總到 totalTaxRefund。若也放入 items，price 請保留負數。
-5. 如果有一般消費稅列，因為 schema 沒有 tax 欄位，請加入一筆稅金 item：name 使用收據稅金文字，translatedName="消費稅"，price=稅額，quantity=1。
-6. totalTaxRefund 只用於 Tax Free 或免稅退稅金額；一般日本 8% 或 10% 消費稅不算退稅。
+5. 「うち消費税等」「內含消費稅」「消費税等」如果只是內含稅資訊，不是另外收取的商品，不要放進 items。
+6. 只有在商品明細是稅前金額、且必須加上消費稅才會等於合計時，才可以加入一筆稅金 item：name 使用收據稅金文字，translatedName="消費稅"，price=稅額，quantity=1。
+7. Tax Free 或免稅收據常見「小計 6950、うち消費税等 631、免税額 -631、クレジット 6319」：totalAmount 必須是 6319，totalTaxRefund=631，items 只放商品與「免税額 -631」，不要把「うち消費税等 631」放進 items。
+8. totalTaxRefund 只用於 Tax Free 或免稅退稅金額；一般日本 8% 或 10% 消費稅不算退稅。
 
 日期規則：
 1. date 輸出 YYYY-MM-DDTHH:mm。

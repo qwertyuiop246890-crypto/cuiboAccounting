@@ -90,6 +90,7 @@ const getModelFallbackOrder = (preferredModel: string) => {
 
 const DISCOUNT_ITEM_PATTERN = /値引|割引|クーポン|coupon|discount|折扣|優惠/i;
 const TAX_REFUND_ITEM_PATTERN = /tax\s*free|tax\s*refund|免税|免稅|退税|退稅/i;
+const INCLUDED_TAX_INFO_PATTERN = /うち\s*消費税|内\s*消費税|消費税等|內含稅|內含消費稅|內消費稅|included\s*tax/i;
 
 const getAdjustmentAmount = (item: any) => {
   const price = Number(item?.price) || 0;
@@ -106,6 +107,17 @@ const getAdjustmentTotal = (items: any[], pattern: RegExp) => {
   return items
     .filter(item => matchesAdjustment(item, pattern))
     .reduce((sum, item) => sum + getAdjustmentAmount(item), 0);
+};
+
+const isIncludedTaxInfoItem = (item: any, hasTaxRefund: boolean) => {
+  if (!hasTaxRefund || Number(item?.price) <= 0) return false;
+  const text = `${item?.name || ''} ${item?.translatedName || ''} ${item?.source || ''}`;
+  return INCLUDED_TAX_INFO_PATTERN.test(text);
+};
+
+const getPayableItems = (items: any[], totalTaxRefund = 0) => {
+  const hasTaxRefund = Number(totalTaxRefund) > 0 || items.some(item => matchesAdjustment(item, TAX_REFUND_ITEM_PATTERN));
+  return items.filter(item => !isIncludedTaxInfoItem(item, hasTaxRefund));
 };
 
 const roundMoney = (amount: number) => Math.round(amount * 100) / 100;
@@ -368,7 +380,7 @@ export function ReceiptDetail() {
   // Auto-calculate total from items if any exist
   useEffect(() => {
     if (items.length > 0 || pendingAiItems.length > 0) {
-      const allItems = [...items, ...pendingAiItems];
+      const allItems = getPayableItems([...items, ...pendingAiItems], receipt.totalTaxRefund);
       const savedTotal = items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
       const pendingTotal = pendingAiItems.reduce((sum, item) => sum + ((item.price || 0) * (item.quantity || 1)), 0);
       const itemDiscountTotal = getAdjustmentTotal(allItems, DISCOUNT_ITEM_PATTERN);
@@ -389,13 +401,22 @@ export function ReceiptDetail() {
 
   const currencySymbol = receipt.currency || 'JPY';
   const allReceiptItems = useMemo(() => [...items, ...pendingAiItems], [items, pendingAiItems]);
-  const splitSummary = useMemo(() => buildSplitSummary(receipt, allReceiptItems), [receipt, allReceiptItems]);
+  const payableReceiptItems = useMemo(() => getPayableItems(allReceiptItems, receipt.totalTaxRefund), [allReceiptItems, receipt.totalTaxRefund]);
+  const visiblePendingAiItems = useMemo(
+    () => pendingAiItems.map((item, index) => ({item, index})).filter(({item}) => !isIncludedTaxInfoItem(item, Number(receipt.totalTaxRefund) > 0)),
+    [pendingAiItems, receipt.totalTaxRefund]
+  );
+  const visibleItems = useMemo(
+    () => items.filter(item => !isIncludedTaxInfoItem(item, Number(receipt.totalTaxRefund) > 0)),
+    [items, receipt.totalTaxRefund]
+  );
+  const splitSummary = useMemo(() => buildSplitSummary(receipt, payableReceiptItems), [receipt, payableReceiptItems]);
   const reconciliation = useMemo(() => {
-    const itemTotal = allReceiptItems.reduce((sum, item) => {
+    const itemTotal = payableReceiptItems.reduce((sum, item) => {
       return sum + ((Number(item.price) || 0) * (Number(item.quantity) || 1));
     }, 0);
-    const itemDiscountTotal = getAdjustmentTotal(allReceiptItems, DISCOUNT_ITEM_PATTERN);
-    const itemTaxRefundTotal = getAdjustmentTotal(allReceiptItems, TAX_REFUND_ITEM_PATTERN);
+    const itemDiscountTotal = getAdjustmentTotal(payableReceiptItems, DISCOUNT_ITEM_PATTERN);
+    const itemTaxRefundTotal = getAdjustmentTotal(payableReceiptItems, TAX_REFUND_ITEM_PATTERN);
     const extraDiscount = Math.max(0, (Number(receipt.totalDiscount) || 0) - itemDiscountTotal);
     const extraTaxRefund = Math.max(0, (Number(receipt.totalTaxRefund) || 0) - itemTaxRefundTotal);
     const calculatedTotal = roundMoney(itemTotal - extraDiscount - extraTaxRefund);
@@ -409,9 +430,9 @@ export function ReceiptDetail() {
       calculatedTotal,
       paidTotal,
       difference,
-      hasWarning: allReceiptItems.length > 0 && Math.abs(difference) >= 1
+      hasWarning: payableReceiptItems.length > 0 && Math.abs(difference) >= 1
     };
-  }, [allReceiptItems, receipt.totalAmount, receipt.totalDiscount, receipt.totalTaxRefund]);
+  }, [payableReceiptItems, receipt.totalAmount, receipt.totalDiscount, receipt.totalTaxRefund]);
   const normalizedReceiptCategory = normalizeGroupName(receipt.category, '\u5ba2\u4eba');
   const displaySubCategory = receipt.subCategory && !receipt.subCategory.includes('?') ? receipt.subCategory : SUBCATEGORY_OPTIONS[0];
 
@@ -687,8 +708,9 @@ export function ReceiptDetail() {
 
       setReceipt(newReceiptData);
 
-      if (rawItems.length > 0) {
-        const newItems = rawItems.map((item: any) => ({
+      const payableRawItems = getPayableItems(rawItems, totalTaxRefund);
+      if (payableRawItems.length > 0) {
+        const newItems = payableRawItems.map((item: any) => ({
           name: item.name || '\u672a\u8fa8\u8b58\u54c1\u9805',
           translatedName: item.translatedName || '',
           price: Number(item.price) || 0,
@@ -856,9 +878,10 @@ export function ReceiptDetail() {
           )}
 
           <div className="space-y-3">
-            {allReceiptItems.length === 0 && <div className="text-center py-8 text-ink/30 text-sm font-medium">{T.noItems}</div>}
+            {payableReceiptItems.length === 0 && <div className="text-center py-8 text-ink/30 text-sm font-medium">{T.noItems}</div>}
 
-            {pendingAiItems.map((item, idx) => {
+            {visiblePendingAiItems.map(({item, index}) => {
+              const idx = index;
               const rowId = `pending-${idx}`;
               const itemTotal = (Number(item.price) || 0) * (Number(item.quantity) || 1);
               return (
@@ -889,7 +912,7 @@ export function ReceiptDetail() {
               );
             })}
 
-            {items.map(item => {
+            {visibleItems.map(item => {
               const itemTotal = (Number(item.price) || 0) * (Number(item.quantity) || 1);
               return (
                 <div key={item.id} className="p-4 bg-background rounded-2xl border border-divider">
